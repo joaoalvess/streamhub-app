@@ -1,6 +1,0 @@
-Target dependency graph (3 targets)
-Target 'StreamHubUITests' in project 'StreamHub'
-➜ Explicit dependency on target 'StreamHub' in project 'StreamHub'
-Target 'StreamHubTests' in project 'StreamHub'
-➜ Explicit dependency on target 'StreamHub' in project 'StreamHub'
-Target 'StreamHub' in project 'StreamHub' (no dependencies)
