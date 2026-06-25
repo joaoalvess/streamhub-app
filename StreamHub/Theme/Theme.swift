@@ -22,10 +22,11 @@ enum Theme {
 
     enum Metrics {
         static let edgeH: CGFloat = 80
-        static let rowSpacing: CGFloat = 44
+        static let rowSpacing: CGFloat = 20
         static let cardSpacing: CGFloat = 32
-        static let titleGap: CGFloat = 16
-        static let focusHeadroom: CGFloat = 60
+        static let titleGap: CGFloat = 0
+        static let focusHeadroom: CGFloat = 32
+        static let heroOverlap: CGFloat = 231
     }
 
     enum Radius {
@@ -33,20 +34,27 @@ enum Theme {
     }
 
     enum Size {
-        static let posterHeight: CGFloat = 322     // tamanho único de card (Em alta == Top 10)
-        static let posterWidth: CGFloat = 268      // ~4:5
+        static let posterHeight: CGFloat = 402     // tamanho único de card (Em alta == Top 10)
+        static let posterWidth: CGFloat = 268      // 2:3
         static let wideCardWidth: CGFloat = 380
         static let wideCardHeight: CGFloat = 214   // 16:9
     }
 
     static let heroGradientVertical = LinearGradient(
-        colors: [.black.opacity(0.92), .clear],
+        stops: [
+            .init(color: .black.opacity(0.85), location: 0.0),
+            .init(color: .black.opacity(0.2), location: 0.35),
+            .init(color: .clear, location: 0.62)
+        ],
         startPoint: .bottom,
-        endPoint: .center
+        endPoint: .top
     )
 
     static let heroGradientHorizontal = LinearGradient(
-        colors: [.black.opacity(0.75), .clear],
+        stops: [
+            .init(color: .black.opacity(0.7), location: 0.0),
+            .init(color: .clear, location: 0.55)
+        ],
         startPoint: .leading,
         endPoint: .trailing
     )
@@ -77,7 +85,7 @@ enum Theme {
     }
 }
 
-// Borda translúcida estilo "liquid glass" revelada no foco dos cards.
+// Realce "liquid glass" sobre todo o card, revelado no foco.
 struct LiquidGlassFocusBorder: ViewModifier {
     var isFocused: Bool
     var cornerRadius: CGFloat = Theme.Radius.card
@@ -86,17 +94,26 @@ struct LiquidGlassFocusBorder: ViewModifier {
         content
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(
+                    .fill(
                         LinearGradient(
-                            colors: [.white.opacity(0.85), .white.opacity(0.2), .white.opacity(0.5)],
+                            colors: [.white.opacity(0.22), .clear],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 3
+                        )
                     )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.7), .white.opacity(0.3)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 2
+                            )
+                    }
                     .opacity(isFocused ? 1 : 0)
             }
-            .shadow(color: .white.opacity(isFocused ? 0.18 : 0), radius: 14)
             .animation(.easeInOut(duration: 0.2), value: isFocused)
     }
 }
