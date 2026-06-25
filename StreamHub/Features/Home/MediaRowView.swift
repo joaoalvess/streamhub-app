@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MediaRowView: View {
-    let row: MediaRow
+    let row: CatalogRow
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Metrics.titleGap) {
@@ -12,15 +12,9 @@ struct MediaRowView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Metrics.cardSpacing) {
-                    ForEach(Array(row.items.enumerated()), id: \.element.id) { idx, item in
-                        switch row.style {
-                        case .standard:
-                            MediaCardView(item: item)
-                        case .continueWatching:
-                            ContinueWatchingCardView(item: item)
-                        case .top10:
-                            Top10CardView(rank: idx + 1, item: item)
-                        }
+                    ForEach(0..<row.displayCount, id: \.self) { index in
+                        card(at: index)
+                            .onAppear { row.onCardAppear(index) }
                     }
                 }
                 .padding(.leading, Theme.Metrics.edgeH)
@@ -30,13 +24,26 @@ struct MediaRowView: View {
             .focusSection()
         }
     }
+
+    @ViewBuilder
+    private func card(at index: Int) -> some View {
+        let item = row.item(at: index)
+        switch row.style {
+        case .standard:
+            MediaCardView(item: item)
+        case .continueWatching:
+            ContinueWatchingCardView(item: item)
+        case .top10:
+            Top10CardView(rank: row.rank(at: index), item: item)
+        }
+    }
 }
 
 #Preview {
     ScrollView {
         VStack(alignment: .leading, spacing: Theme.Metrics.rowSpacing) {
             ForEach(MockData.rows) { row in
-                MediaRowView(row: row)
+                MediaRowView(row: CatalogRow(staticTitle: row.title, style: row.style, items: row.items))
             }
         }
     }
