@@ -3,9 +3,10 @@ import SwiftUI
 struct Top10CardView: View {
     let rank: Int
     let item: MediaItem
+    var onSelect: () -> Void = {}
 
     var body: some View {
-        Button(action: {}) {
+        Button(action: onSelect) {
             PosterCard(item: item, rank: rank)
         }
         .buttonStyle(.card)

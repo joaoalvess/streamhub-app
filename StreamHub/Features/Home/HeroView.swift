@@ -161,24 +161,22 @@ struct HeroView: View {
 
     @ViewBuilder
     private func ctaRow(for item: MediaItem) -> some View {
-        GlassEffectContainer(spacing: 20) {
-            HStack(spacing: 24) {
-                Button(action: {}) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "play.fill")
-                        Text("Reproduzir")
-                    }
+        HStack(spacing: 24) {
+            Button(action: {}) {
+                HStack(spacing: 10) {
+                    Image(systemName: "play.fill")
+                    Text("Reproduzir")
                 }
-                .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: isActive(.play)))
-                .prefersDefaultFocus(in: heroFocus)
-                .heroControlFocus(focusedControl, .play)
-
-                circleButton(symbol: "plus", control: .add, action: {})
-                circleButton(symbol: "info.circle", control: .info, action: {})
-                circleButton(symbol: "chevron.right", control: .next, action: advance)
             }
-            .focusScope(heroFocus)
+            .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: isActive(.play)))
+            .prefersDefaultFocus(in: heroFocus)
+            .heroControlFocus(focusedControl, .play)
+
+            circleButton(symbol: "plus", control: .add, action: {})
+            circleButton(symbol: "info.circle", control: .info, action: {})
+            circleButton(symbol: "chevron.right", control: .next, action: advance)
         }
+        .focusScope(heroFocus)
     }
 
     private func isActive(_ control: HeroControl) -> Bool {
@@ -192,63 +190,6 @@ struct HeroView: View {
         }
         .buttonStyle(HeroButtonStyle(shape: .circle, isActive: isActive(control)))
         .heroControlFocus(focusedControl, control)
-    }
-}
-
-private struct HeroButtonStyle: ButtonStyle {
-    enum Shape { case capsule, circle }
-    var shape: Shape
-    var isActive: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        Group {
-            switch shape {
-            case .capsule:
-                configuration.label
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(isActive ? Color.black : Theme.textPrimary)
-                    .padding(.horizontal, 40)
-                    .padding(.vertical, 18)
-                    .modifier(HeroGlassBackground(isActive: isActive, shape: Capsule()))
-            case .circle:
-                configuration.label
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(isActive ? Color.black : Theme.textPrimary)
-                    .frame(width: 64, height: 64)
-                    .modifier(HeroGlassBackground(isActive: isActive, shape: Circle()))
-            }
-        }
-        .scaleEffect(configuration.isPressed ? 1.04 : (isActive ? 1.08 : 1.0))
-        .animation(.easeOut(duration: 0.18), value: isActive)
-        .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
-}
-
-private struct HeroGlassBackground<S: Shape>: ViewModifier {
-    var isActive: Bool
-    var shape: S
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isActive {
-            content.background(shape.fill(Theme.fill))
-        } else {
-            content.glassEffect(.clear, in: shape)
-        }
-    }
-}
-
-private struct AgeRatingBadge: View {
-    let rating: MediaItem.AgeRating
-
-    var body: some View {
-        Text(rating.label)
-            .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(minWidth: 28)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(rating.color, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

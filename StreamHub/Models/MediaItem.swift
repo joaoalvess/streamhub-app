@@ -17,11 +17,21 @@ struct MediaItem: Identifiable, Hashable {
     let episodeLabel: String?
     let tint: Color?
     let ageRating: AgeRating?
+    let imdbRating: String?
+    let runtime: String?
+    let cast: [Person]
+    let directors: [Person]
 
     enum Kind: String {
         case movie
         case series
         case anime
+    }
+
+    struct Person: Hashable {
+        let name: String
+        let character: String?
+        let photoURL: URL?
     }
 
     enum AgeRating: String {
@@ -32,7 +42,9 @@ struct MediaItem: Identifiable, Hashable {
         case sixteen = "16"
         case eighteen = "18"
 
-        var label: String { rawValue }
+        var label: String {
+            self == .l ? rawValue : "A" + rawValue
+        }
 
         var color: Color {
             switch self {
@@ -61,7 +73,11 @@ struct MediaItem: Identifiable, Hashable {
         progress: Double? = nil,
         episodeLabel: String? = nil,
         tint: Color? = nil,
-        ageRating: AgeRating? = nil
+        ageRating: AgeRating? = nil,
+        imdbRating: String? = nil,
+        runtime: String? = nil,
+        cast: [Person] = [],
+        directors: [Person] = []
     ) {
         self.id = id
         self.contentId = contentId
@@ -78,5 +94,9 @@ struct MediaItem: Identifiable, Hashable {
         self.episodeLabel = episodeLabel
         self.tint = tint
         self.ageRating = ageRating
+        self.imdbRating = imdbRating
+        self.runtime = runtime
+        self.cast = cast
+        self.directors = directors
     }
 }

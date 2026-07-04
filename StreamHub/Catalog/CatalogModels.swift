@@ -30,6 +30,8 @@ struct MetaPreview: Decodable, Sendable {
     let genres: [String]?
     let year: LenientString?
     let imdbRating: String?
+    let runtime: String?
+    let director: String?
     let poster: String?
     let background: String?
     let logo: String?
@@ -39,7 +41,7 @@ struct MetaPreview: Decodable, Sendable {
     let tmdbId: String?
 
     enum CodingKeys: String, CodingKey {
-        case id, type, name, description, genres, year, imdbRating
+        case id, type, name, description, genres, year, imdbRating, runtime, director
         case poster, background, logo, landscapePoster
         case appExtras = "app_extras"
         case imdbId = "_imdbId"
@@ -49,6 +51,14 @@ struct MetaPreview: Decodable, Sendable {
 
 struct AppExtras: Decodable, Sendable {
     let certificationLocal: String?
+    let cast: [CreditDTO]?
+    let directors: [CreditDTO]?
+}
+
+struct CreditDTO: Decodable, Sendable {
+    let name: String
+    let character: String?
+    let photo: String?
 }
 
 struct LenientString: Decodable, Sendable {

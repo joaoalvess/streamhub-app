@@ -2,10 +2,11 @@ import SwiftUI
 
 struct ContinueWatchingCardView: View {
     let item: MediaItem
+    var onSelect: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Button(action: {}) {
+            Button(action: onSelect) {
                 CardLabel(item: item)
             }
             .buttonStyle(.card)

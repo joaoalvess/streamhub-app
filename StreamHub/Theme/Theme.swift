@@ -31,6 +31,7 @@ enum Theme {
 
     enum Radius {
         static let card: CGFloat = 12
+        static let window: CGFloat = 28
     }
 
     enum Size {

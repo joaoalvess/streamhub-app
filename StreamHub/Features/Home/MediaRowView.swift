@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MediaRowView: View {
     let row: CatalogRow
+    @Environment(DetailRouter.self) private var router: DetailRouter?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Metrics.titleGap) {
@@ -30,12 +31,16 @@ struct MediaRowView: View {
         let item = row.item(at: index)
         switch row.style {
         case .standard:
-            MediaCardView(item: item)
+            MediaCardView(item: item, onSelect: { openDetail(at: index) })
         case .continueWatching:
-            ContinueWatchingCardView(item: item)
+            ContinueWatchingCardView(item: item, onSelect: { openDetail(at: index) })
         case .top10:
-            Top10CardView(rank: row.rank(at: index), item: item)
+            Top10CardView(rank: row.rank(at: index), item: item, onSelect: { openDetail(at: index) })
         }
+    }
+
+    private func openDetail(at index: Int) {
+        router?.open(row: row, index: index)
     }
 }
 

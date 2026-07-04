@@ -2,9 +2,10 @@ import SwiftUI
 
 struct MediaCardView: View {
     let item: MediaItem
+    var onSelect: () -> Void = {}
 
     var body: some View {
-        Button(action: {}) {
+        Button(action: onSelect) {
             PosterCard(item: item)
         }
         .buttonStyle(.card)

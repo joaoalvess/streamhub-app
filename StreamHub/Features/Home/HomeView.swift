@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @State private var viewModel: HomeViewModel
+    @State private var router = DetailRouter()
     @FocusState private var focusedControl: HeroControl?
     @State private var heroTint: Color = Theme.bg
 
@@ -28,6 +29,14 @@ struct HomeView: View {
         }
         .ignoresSafeArea()
         .task { await viewModel.load() }
+        .environment(router)
+        .fullScreenCover(item: routerTarget) { target in
+            MediaWindowView(row: target.row, startIndex: target.index)
+        }
+    }
+
+    private var routerTarget: Binding<DetailRouter.Target?> {
+        Binding(get: { router.target }, set: { router.target = $0 })
     }
 
     private var content: some View {
