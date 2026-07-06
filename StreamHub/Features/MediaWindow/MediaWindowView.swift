@@ -59,7 +59,7 @@ struct MediaWindowView: View {
                         showsModeSelector: showsModeSelector(for: loaded.item),
                         playbackMode: playbackMode,
                         onPlay: { play(loaded.item) },
-                        onSelectMode: { playbackMode = $0 },
+                        onCycleMode: { playbackMode = playbackMode.next },
                         onShowDetails: showDetails
                     )
                     .frame(width: isFullscreen ? geo.size.width : geo.size.width * 0.9)
