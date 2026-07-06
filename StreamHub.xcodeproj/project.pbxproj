@@ -29,9 +29,22 @@
 		AEAEB6D12FE62C3D0096B66F /* StreamHubUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StreamHubUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AEAEB6F02FE62C3D0096B66F /* Exceptions for "StreamHub" folder in "StreamHub" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AEAEB6B92FE62C3B0096B66F /* StreamHub */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AEAEB6BC2FE62C3B0096B66F /* StreamHub */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AEAEB6F02FE62C3D0096B66F /* Exceptions for "StreamHub" folder in "StreamHub" target */,
+			);
 			path = StreamHub;
 			sourceTree = "<group>";
 		};
@@ -374,6 +387,7 @@
 				DEVELOPMENT_TEAM = J924GWS9NA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StreamHub/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -403,6 +417,7 @@
 				DEVELOPMENT_TEAM = J924GWS9NA;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StreamHub/Info.plist;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
 				LD_RUNPATH_SEARCH_PATHS = (
