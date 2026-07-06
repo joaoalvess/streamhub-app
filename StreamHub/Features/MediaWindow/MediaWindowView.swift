@@ -14,8 +14,10 @@ struct MediaWindowView: View {
     @State private var isFullscreen = false
     @State private var showsInfo = false
     @State private var loaded: Loaded?
+    @State private var playbackMode: PlaybackMode = .dubbed
     @FocusState private var focus: WindowFocus?
     @Environment(\.dismiss) private var dismiss
+    @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
 
     init(row: CatalogRow, startIndex: Int) {
         self.row = row
@@ -52,6 +54,12 @@ struct MediaWindowView: View {
                         item: loaded.item,
                         logo: loaded.logo,
                         focus: $focus,
+                        playLabel: playLabel(for: loaded.item),
+                        isPlayLoading: isPlayLoading,
+                        showsModeSelector: showsModeSelector(for: loaded.item),
+                        playbackMode: playbackMode,
+                        onPlay: { play(loaded.item) },
+                        onSelectMode: { playbackMode = $0 },
                         onShowDetails: showDetails
                     )
                     .frame(width: isFullscreen ? geo.size.width : geo.size.width * 0.9)
@@ -74,6 +82,50 @@ struct MediaWindowView: View {
             withAnimation(.easeOut(duration: 0.25)) { loaded = nil }
         }
         .task(id: centerIndex) { await loadAssets() }
+        .alert("Não foi possível reproduzir", isPresented: playbackAlertPresented) {
+            Button("OK", role: .cancel) { coordinator?.dismissError() }
+        } message: {
+            Text(playbackErrorMessage ?? "")
+        }
+    }
+
+    private var isPlayLoading: Bool {
+        coordinator?.state == .loading
+    }
+
+    private var playbackAlertPresented: Binding<Bool> {
+        Binding(
+            get: {
+                if case .some(.failed) = coordinator?.state { return true }
+                return false
+            },
+            set: { presented in
+                if !presented { coordinator?.dismissError() }
+            }
+        )
+    }
+
+    private var playbackErrorMessage: String? {
+        if case .some(.failed(let error)) = coordinator?.state { return error.message }
+        return nil
+    }
+
+    private func playLabel(for item: MediaItem) -> String {
+        guard item.kind == .movie, let coordinator,
+              case .externalService(let service) = coordinator.route(for: item) else {
+            return "Reproduzir"
+        }
+        return service.playCTA
+    }
+
+    private func showsModeSelector(for item: MediaItem) -> Bool {
+        guard item.kind == .movie, let coordinator else { return false }
+        return coordinator.route(for: item) == .infuse
+    }
+
+    private func play(_ item: MediaItem) {
+        guard let coordinator else { return }
+        Task { await coordinator.play(item: item, mode: playbackMode) }
     }
 
     private func enterFullscreen() {

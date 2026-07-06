@@ -4,6 +4,7 @@ enum WindowFocus: Hashable {
     case carousel
     case details
     case play
+    case mode(PlaybackMode)
     case add
     case info
 }
@@ -16,7 +17,12 @@ struct WindowInfoOverlay: View {
     let item: MediaItem
     var logo: Image?
     var focus: FocusState<WindowFocus?>.Binding
+    var playLabel: String = "Reproduzir"
+    var isPlayLoading = false
+    var showsModeSelector = false
+    var playbackMode: PlaybackMode = .dubbed
     var onPlay: () -> Void = {}
+    var onSelectMode: (PlaybackMode) -> Void = { _ in }
     var onAdd: () -> Void = {}
     var onInfo: () -> Void = {}
     var onShowDetails: () -> Void = {}
@@ -119,12 +125,21 @@ struct WindowInfoOverlay: View {
         HStack(spacing: 24) {
             Button(action: onPlay) {
                 HStack(spacing: 10) {
-                    Image(systemName: "play.fill")
-                    Text("Reproduzir")
+                    if isPlayLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "play.fill")
+                    }
+                    Text(playLabel)
                 }
             }
             .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: focus.wrappedValue == .play))
             .focused(focus, equals: .play)
+            .disabled(isPlayLoading)
+
+            if showsModeSelector {
+                modeSelector
+            }
 
             Button(action: onAdd) {
                 Image(systemName: "plus")
@@ -138,6 +153,52 @@ struct WindowInfoOverlay: View {
             .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .info))
             .focused(focus, equals: .info)
         }
+    }
+
+    private var modeSelector: some View {
+        HStack(spacing: 12) {
+            ForEach(PlaybackMode.allCases, id: \.self) { mode in
+                Button(action: { onSelectMode(mode) }) {
+                    HStack(spacing: 8) {
+                        Text(mode.label)
+                        if !mode.isAvailable {
+                            Text("em breve")
+                                .font(Theme.Font.badge)
+                                .opacity(0.7)
+                        }
+                    }
+                }
+                .buttonStyle(ModeButtonStyle(
+                    isSelected: playbackMode == mode,
+                    isActive: focus.wrappedValue == .mode(mode)
+                ))
+                .focused(focus, equals: .mode(mode))
+                .disabled(!mode.isAvailable || isPlayLoading)
+                .opacity(mode.isAvailable ? 1 : 0.45)
+            }
+        }
+    }
+}
+
+private struct ModeButtonStyle: ButtonStyle {
+    var isSelected: Bool
+    var isActive: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 22, weight: .semibold))
+            .foregroundStyle(isActive || isSelected ? Color.black : Theme.textPrimary)
+            .padding(.horizontal, 26)
+            .padding(.vertical, 14)
+            .background {
+                ZStack {
+                    Color.clear.glassEffect(.clear, in: Capsule())
+                    Capsule().fill(Theme.fill).opacity(isActive ? 1 : (isSelected ? 0.85 : 0))
+                }
+            }
+            .animation(.easeOut(duration: 0.18)) { view in
+                view.scaleEffect(configuration.isPressed ? 1.02 : (isActive ? 1.06 : 1.0))
+            }
     }
 }
 
