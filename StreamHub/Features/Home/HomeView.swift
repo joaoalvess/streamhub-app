@@ -5,8 +5,12 @@ struct HomeView: View {
     @State private var router = DetailRouter()
     @FocusState private var focusedControl: HeroControl?
     @State private var heroTint: Color = Theme.bg
+    @Environment(PlaybackProgressStore.self) private var progressStore: PlaybackProgressStore?
+
+    private let tag: String
 
     init(tag: String = "movie", heroCatalogId: String = "trakt.popular.movies") {
+        self.tag = tag
         _viewModel = State(initialValue: HomeViewModel(tag: tag, heroCatalogId: heroCatalogId))
     }
 
@@ -48,6 +52,11 @@ struct HomeView: View {
                         .containerRelativeFrame(.vertical) { height, _ in height }
                         .padding(.bottom, -Theme.Metrics.heroOverlap)
                         .zIndex(0)
+
+                    if tag == "movie", let progressStore, !progressStore.entries.isEmpty {
+                        ContinueWatchingRowView(entries: progressStore.entries)
+                            .zIndex(1)
+                    }
 
                     ForEach(viewModel.rows) { row in
                         MediaRowView(row: row)
