@@ -4,8 +4,17 @@ struct ContinueWatchingRowView: View {
     let entries: [ResumeEntry]
     @Environment(DetailRouter.self) private var router: DetailRouter?
 
+    private struct IndexedItem: Identifiable {
+        let id: String
+        let index: Int
+        let item: MediaItem
+    }
+
     var body: some View {
         let items = entries.map(MediaItem.init(entry:))
+        let indexed = entries.indices.map {
+            IndexedItem(id: entries[$0].contentId, index: $0, item: items[$0])
+        }
         VStack(alignment: .leading, spacing: Theme.Metrics.titleGap) {
             Text("Continue assistindo")
                 .font(Theme.Font.sectionTitle)
@@ -14,9 +23,9 @@ struct ContinueWatchingRowView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: Theme.Metrics.cardSpacing) {
-                    ForEach(Array(zip(entries, items.indices)), id: \.0.contentId) { _, index in
-                        ContinueWatchingCardView(item: items[index]) {
-                            open(items: items, at: index)
+                    ForEach(indexed) { entry in
+                        ContinueWatchingCardView(item: entry.item) {
+                            open(items: items, at: entry.index)
                         }
                     }
                 }
