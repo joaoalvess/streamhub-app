@@ -26,7 +26,7 @@ final class CatalogRow: Identifiable {
 
     init(api: MetadataAPI, type: String, id: String,
          title: String, style: MediaRow.Style, firstPage: [MetaPreview]) {
-        let items = firstPage.map { MediaItem(preview: $0, catalogType: type) }
+        let items = firstPage.map { MediaItem(preview: $0, catalogType: type, catalogId: id) }
         self.api = api
         self.type = type
         self.catalogId = id
@@ -93,7 +93,7 @@ final class CatalogRow: Identifiable {
         if page.isEmpty {
             reachedEnd = true
         } else {
-            loaded.append(contentsOf: page.map { MediaItem(preview: $0, catalogType: type) })
+            loaded.append(contentsOf: page.map { MediaItem(preview: $0, catalogType: type, catalogId: catalogId) })
             skip += page.count
         }
         isFetching = false

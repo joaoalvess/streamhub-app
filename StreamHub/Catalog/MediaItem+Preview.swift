@@ -11,16 +11,18 @@ extension MediaItem.Person {
 }
 
 extension MediaItem {
-    init(preview: MetaPreview, catalogType: String? = nil) {
+    init(preview: MetaPreview, catalogType: String? = nil, catalogId: String? = nil) {
         let directors: [Person]
         if let structured = preview.appExtras?.directors, !structured.isEmpty {
             directors = structured.map(Person.init(credit:))
         } else {
             directors = Self.people(fromCSV: preview.director)
         }
+        let streamingSource = catalogId.flatMap(StreamingService.init(catalogId:))
 
         self.init(
             contentId: preview.id,
+            imdbId: preview.imdbId ?? (preview.id.hasPrefix("tt") ? preview.id : nil),
             title: preview.name,
             kind: MediaItem.Kind(rawValue: catalogType ?? preview.type) ?? .movie,
             genres: preview.genres ?? [],
@@ -31,6 +33,8 @@ extension MediaItem {
             logoURL: preview.logo.flatMap(URL.init(string:)),
             synopsis: preview.description ?? "",
             year: Int(preview.year?.value ?? "") ?? 0,
+            serviceBadge: streamingSource?.badgeLabel,
+            streamingSource: streamingSource,
             ageRating: preview.appExtras?.certificationLocal
                 .flatMap(MediaItem.AgeRating.init(rawValue:)),
             imdbRating: preview.imdbRating,

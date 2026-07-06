@@ -4,6 +4,7 @@ import SwiftUI
 struct MediaItem: Identifiable, Hashable {
     let id: UUID
     let contentId: String?
+    let imdbId: String?
     let title: String
     let kind: Kind
     let genres: [String]
@@ -13,6 +14,7 @@ struct MediaItem: Identifiable, Hashable {
     let synopsis: String
     let year: Int
     let serviceBadge: String?
+    let streamingSource: StreamingService?
     let progress: Double?
     let episodeLabel: String?
     let tint: Color?
@@ -61,6 +63,7 @@ struct MediaItem: Identifiable, Hashable {
     init(
         id: UUID = UUID(),
         contentId: String? = nil,
+        imdbId: String? = nil,
         title: String,
         kind: Kind,
         genres: [String],
@@ -70,6 +73,7 @@ struct MediaItem: Identifiable, Hashable {
         synopsis: String,
         year: Int,
         serviceBadge: String? = nil,
+        streamingSource: StreamingService? = nil,
         progress: Double? = nil,
         episodeLabel: String? = nil,
         tint: Color? = nil,
@@ -81,6 +85,7 @@ struct MediaItem: Identifiable, Hashable {
     ) {
         self.id = id
         self.contentId = contentId
+        self.imdbId = imdbId
         self.title = title
         self.kind = kind
         self.genres = genres
@@ -90,6 +95,7 @@ struct MediaItem: Identifiable, Hashable {
         self.synopsis = synopsis
         self.year = year
         self.serviceBadge = serviceBadge
+        self.streamingSource = streamingSource
         self.progress = progress
         self.episodeLabel = episodeLabel
         self.tint = tint
