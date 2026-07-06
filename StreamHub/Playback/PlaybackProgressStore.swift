@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-struct ResumeEntry: Codable, Hashable {
+nonisolated struct ResumeEntry: Codable, Hashable {
     let contentId: String
     let imdbId: String?
     let title: String

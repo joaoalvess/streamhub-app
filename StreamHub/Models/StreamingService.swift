@@ -1,6 +1,6 @@
 import Foundation
 
-enum StreamingService: String, CaseIterable, Hashable {
+nonisolated enum StreamingService: String, CaseIterable, Hashable {
     case netflix = "nfx"
     case disneyPlus = "dnp"
     case hboMax = "hbm"

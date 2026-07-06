@@ -1,6 +1,6 @@
 import Foundation
 
-enum StreamsAPIError: Error {
+nonisolated enum StreamsAPIError: Error {
     case notConfigured
     case invalidURL
     case badStatus(Int)
@@ -9,7 +9,7 @@ enum StreamsAPIError: Error {
     case decoding(any Error)
 }
 
-struct StreamsAPI {
+nonisolated struct StreamsAPI {
     let session: URLSession
     let gate: RequestGate
     let baseProvider: () -> URL?

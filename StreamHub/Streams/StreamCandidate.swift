@@ -1,6 +1,6 @@
 import Foundation
 
-struct StreamCandidate {
+nonisolated struct StreamCandidate {
     let videoURL: URL
     let filename: String?
     let matchText: String

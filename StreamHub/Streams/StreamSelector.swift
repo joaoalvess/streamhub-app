@@ -1,6 +1,6 @@
 import Foundation
 
-enum StreamSelector {
+nonisolated enum StreamSelector {
     static func playable(from streams: [AddonStream]) -> [StreamCandidate] {
         streams.compactMap(StreamCandidate.init(stream:))
     }

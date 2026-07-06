@@ -1,12 +1,12 @@
 import Foundation
 import Security
 
-struct SecretsStore {
+nonisolated struct SecretsStore {
     static let shared = SecretsStore()
 
     private static let service = "joaoalvess.StreamHub.secrets"
 
-    enum Key: String, CaseIterable {
+    nonisolated enum Key: String, CaseIterable {
         case aioStreamsHost = "AIOStreamsHost"
         case aioStreamsUUID = "AIOStreamsUUID"
         case aioStreamsConfig = "AIOStreamsConfig"

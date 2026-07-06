@@ -1,6 +1,6 @@
 import Foundation
 
-enum PlaybackMode: String, CaseIterable, Hashable {
+nonisolated enum PlaybackMode: String, CaseIterable, Hashable {
     case dubbed
     case subtitled
     case enhanced

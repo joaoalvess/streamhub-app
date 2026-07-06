@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct MediaItem: Identifiable, Hashable {
+nonisolated struct MediaItem: Identifiable, Hashable {
     let id: UUID
     let contentId: String?
     let imdbId: String?
@@ -24,19 +24,19 @@ struct MediaItem: Identifiable, Hashable {
     let cast: [Person]
     let directors: [Person]
 
-    enum Kind: String {
+    nonisolated enum Kind: String {
         case movie
         case series
         case anime
     }
 
-    struct Person: Hashable {
+    nonisolated struct Person: Hashable {
         let name: String
         let character: String?
         let photoURL: URL?
     }
 
-    enum AgeRating: String {
+    nonisolated enum AgeRating: String {
         case l = "L"
         case ten = "10"
         case twelve = "12"

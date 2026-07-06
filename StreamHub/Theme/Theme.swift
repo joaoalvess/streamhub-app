@@ -125,7 +125,7 @@ extension View {
     }
 }
 
-extension Color {
+nonisolated extension Color {
     init(hex: UInt, alpha: Double = 1) {
         self.init(
             .sRGB,

@@ -1,10 +1,10 @@
 import Foundation
 
-struct StreamsResponse: Decodable, Sendable {
+nonisolated struct StreamsResponse: Decodable, Sendable {
     let streams: [AddonStream]
 }
 
-struct AddonStream: Decodable, Sendable {
+nonisolated struct AddonStream: Decodable, Sendable {
     let name: String?
     let description: String?
     let url: String?
@@ -21,7 +21,7 @@ struct AddonStream: Decodable, Sendable {
     }
 }
 
-struct StreamBehaviorHints: Decodable, Sendable {
+nonisolated struct StreamBehaviorHints: Decodable, Sendable {
     let bingeGroup: String?
     let videoHash: String?
     let videoSize: Int64?
@@ -52,7 +52,7 @@ struct StreamBehaviorHints: Decodable, Sendable {
     }
 }
 
-struct StreamDataTag: Decodable, Sendable {
+nonisolated struct StreamDataTag: Decodable, Sendable {
     let type: String?
 
     private enum CodingKeys: String, CodingKey {

@@ -1,10 +1,10 @@
 import Foundation
 
-struct AddonManifest: Decodable, Sendable {
+nonisolated struct AddonManifest: Decodable, Sendable {
     let catalogs: [CatalogDefinition]
 }
 
-struct CatalogDefinition: Decodable, Sendable {
+nonisolated struct CatalogDefinition: Decodable, Sendable {
     let type: String
     let id: String
     let name: String
@@ -13,16 +13,16 @@ struct CatalogDefinition: Decodable, Sendable {
     var hasRequiredExtra: Bool { extra?.contains { $0.isRequired == true } ?? false }
 }
 
-struct ExtraDefinition: Decodable, Sendable {
+nonisolated struct ExtraDefinition: Decodable, Sendable {
     let name: String
     let isRequired: Bool?
 }
 
-struct CatalogResponse: Decodable, Sendable {
+nonisolated struct CatalogResponse: Decodable, Sendable {
     let metas: [MetaPreview]
 }
 
-struct MetaPreview: Decodable, Sendable {
+nonisolated struct MetaPreview: Decodable, Sendable {
     let id: String
     let type: String
     let name: String
@@ -49,19 +49,19 @@ struct MetaPreview: Decodable, Sendable {
     }
 }
 
-struct AppExtras: Decodable, Sendable {
+nonisolated struct AppExtras: Decodable, Sendable {
     let certificationLocal: String?
     let cast: [CreditDTO]?
     let directors: [CreditDTO]?
 }
 
-struct CreditDTO: Decodable, Sendable {
+nonisolated struct CreditDTO: Decodable, Sendable {
     let name: String
     let character: String?
     let photo: String?
 }
 
-struct LenientString: Decodable, Sendable {
+nonisolated struct LenientString: Decodable, Sendable {
     let value: String?
 
     init(from decoder: any Decoder) throws {

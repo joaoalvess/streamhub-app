@@ -1,12 +1,12 @@
 import UIKit
 
-struct InfusePlayItem {
+nonisolated struct InfusePlayItem {
     let videoURL: URL
     let filename: String?
     let positionSeconds: Int?
 }
 
-enum InfuseURLBuilder {
+nonisolated enum InfuseURLBuilder {
     static let successCallback = "streamhub://infuse/success"
     static let errorCallback = "streamhub://infuse/error"
 
@@ -42,7 +42,7 @@ enum InfuseURLBuilder {
     }
 }
 
-enum InfuseCallback: Equatable {
+nonisolated enum InfuseCallback: Equatable {
     case success(lastPlayedURL: String?, position: Int?)
     case error(code: String?, message: String?, failedURLs: [String])
 

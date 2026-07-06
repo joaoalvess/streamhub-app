@@ -1,6 +1,6 @@
 import Foundation
 
-extension MediaItem.Person {
+nonisolated extension MediaItem.Person {
     init(credit: CreditDTO) {
         self.init(
             name: credit.name,
@@ -10,7 +10,7 @@ extension MediaItem.Person {
     }
 }
 
-extension MediaItem {
+nonisolated extension MediaItem {
     init(preview: MetaPreview, catalogType: String? = nil, catalogId: String? = nil) {
         let directors: [Person]
         if let structured = preview.appExtras?.directors, !structured.isEmpty {

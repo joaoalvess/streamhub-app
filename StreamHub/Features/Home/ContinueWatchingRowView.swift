@@ -44,7 +44,7 @@ struct ContinueWatchingRowView: View {
     }
 }
 
-extension MediaItem {
+nonisolated extension MediaItem {
     init(entry: ResumeEntry) {
         let service = entry.serviceCode.flatMap(StreamingService.init(rawValue:))
         self.init(
