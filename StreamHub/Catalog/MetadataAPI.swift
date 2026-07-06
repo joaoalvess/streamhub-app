@@ -29,7 +29,8 @@ struct MetadataAPI: Sendable {
     }
 
     private func get<T: Decodable>(_ type: T.Type, at path: String) async throws -> T {
-        guard let url = URL(string: Self.baseString + "/" + path) else {
+        let base = SecretsStore.shared.metadataBase?.absoluteString ?? Self.baseString
+        guard let url = URL(string: base + "/" + path) else {
             throw MetadataAPIError.invalidURL
         }
         let data: Data
