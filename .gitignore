@@ -45,3 +45,6 @@ fastlane/test_output
 
 # Design references (kept locally, not versioned)
 references/
+
+# App secrets (bootstrapped locally, never versioned)
+StreamHub/Secrets.plist
