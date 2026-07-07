@@ -106,3 +106,11 @@ nonisolated struct MediaItem: Identifiable, Hashable {
         self.directors = directors
     }
 }
+
+nonisolated extension MediaItem {
+    var isAnime: Bool {
+        if kind == .anime || streamingSource == .crunchyroll { return true }
+        guard let contentId else { return false }
+        return contentId.hasPrefix("mal:") || contentId.hasPrefix("kitsu:")
+    }
+}
