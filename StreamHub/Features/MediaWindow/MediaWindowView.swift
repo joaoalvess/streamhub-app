@@ -119,7 +119,7 @@ struct MediaWindowView: View {
     }
 
     private func showsModeSelector(for item: MediaItem) -> Bool {
-        guard item.kind == .movie, let coordinator else { return false }
+        guard item.kind == .movie, !item.isAnime, let coordinator else { return false }
         return coordinator.route(for: item) == .infuse
     }
 
