@@ -4,7 +4,7 @@
 >
 > Esta pasta é a fonte-da-verdade técnica. Está escrita em PT-BR e otimizada para leitura por agentes de IA: fatos densos, tabelas, exemplos `curl` executáveis e nada de enrolação.
 
-> ⚠️ **CREDENCIAL EMBUTIDA NA URL.** A URL base contém um token de configuração (`{CONFIG}`) que carrega — criptografadas — as chaves de API dos serviços de debrid do usuário. Trate a URL base inteira como **segredo**. Não publique, não logue em texto plano, não envie a serviços externos. Os exemplos abaixo usam a URL real apenas porque este repositório é interno.
+> ⚠️ **CREDENCIAL EMBUTIDA NA URL.** A URL base contém um token de configuração (`{CONFIG}`) que carrega — criptografadas — as chaves de API dos serviços de debrid do usuário. Trate a URL base inteira como **segredo**. Não publique, não logue em texto plano, não envie a serviços externos. As bases reais dos 3 perfis vivem apenas no `StreamHub/Secrets.plist` local (não versionado; template em `Secrets.example.plist`).
 
 ---
 
@@ -13,36 +13,56 @@
 | Atributo | Valor |
 |---|---|
 | Software | AIOStreams (autor: Viren070) |
-| `manifest.name` | `AIOStream` |
-| `manifest.id` | `com.aiostreams.viren070.8b977f8f-511` |
+| Instâncias | **3 perfis** de configuração no mesmo host (ver [Perfis](#perfis)) |
 | Versão | `2.30.3` |
-| Descrição | "AIOStreams configurado para priorizar conteudo dublado em PT-BR." *(string literal do manifest — sem acento no original)* |
 | Hospedagem | Self-hosted, exposto via **Tailscale** (`*.ts.net`) |
 | Backend | Node.js / **Express** (`x-powered-by: Express`), HTTP/2 |
 | Protocolo | [Stremio Addon Protocol](./protocol.md) |
 
-**AIOStreams é um agregador.** Ele não hospeda vídeo: consulta múltiplos scrapers (Torrentio, StremThru Torz, Comet, MediaFusion, etc.), cruza os resultados com um serviço de **debrid** (nesta instância, **TorBox**) e devolve uma lista unificada de streams já priorizada/filtrada conforme a configuração do usuário (aqui: priorizar dublado PT-BR). O resultado final são **URLs HTTP(S) diretas e reproduzíveis** — ver [stream.md](./stream.md).
+**AIOStreams é um agregador.** Ele não hospeda vídeo: consulta múltiplos scrapers (Torrentio, StremThru Torz, Comet, MediaFusion, SeaDex, etc.), cruza os resultados com um serviço de **debrid** (nesta instância, **TorBox**) e devolve uma lista unificada de streams já priorizada/filtrada conforme a configuração do perfil. O resultado final são **URLs HTTP(S) diretas e reproduzíveis** — ver [stream.md](./stream.md).
 
-> **API irmã:** a descoberta de conteúdo (catálogos, fichas, IDs IMDb) é feita por outro addon, o **AIOMetadata**, documentado em [`../metadata/`](../metadata/README.md). O fluxo do StreamHub combina os dois: **AIOMetadata** diz *o que assistir* e entrega o ID externo (`tt…`); **AIOStreams** (esta API) diz *como assistir* (os links). O player (nativo ou Infuse) reproduz.
+### Perfis
+
+Cada perfil é uma instância de configuração independente (UUID + token próprios) com filtros e
+rankings refinados **server-side** — o contrato com o app é: **o 1º stream retornado é sempre o
+correto**.
+
+| Perfil | `manifest.name` | UUID da instância | Chave no `Secrets.plist` | Quando o app usa |
+|---|---|---|---|---|
+| **cinema** | `🎬 Cinema 4K HDR (Legendado)` | `5fd3c25b-cad5-4086-8804-b8e4c9963a3d` | `AIOStreamsCinemaBase` | Modo **Legendado** (Leg) |
+| **casual** | `🍿 Casual PT-BR (Dublado)` | `48af64eb-b29a-48a3-add0-4d42f3777bf3` | `AIOStreamsCasualBase` | Modo **Dublado** (Dub) |
+| **anime** | `🌸 Anime (Legendado PT-BR)` | `b22a351f-da5e-482b-8841-1bb6c19a1134` | `AIOStreamsAnimeBase` | Todo **anime**, sem modo |
+
+- **Contrato do 1º resultado:** o app toca o **primeiro stream playável** (`url` http(s), sem
+  `streamData.statistic`) sem nenhuma seleção client-side (`StreamHub/Streams/StreamProfile.swift`
+  + `PlaybackCoordinator`).
+- **Detecção de anime no app:** `kind == .anime` (aba Animes) **ou** `contentId` com prefixo
+  `mal:`/`kitsu:` **ou** origem Crunchyroll (`streaming.cru`). Anime ignora o modo Dub/Leg e usa
+  sempre o perfil anime via `/stream/anime/{id}.json`, com o id do catálogo **como está**
+  (funciona com id de série sem episódio, com `:{ep}` e com `tt…` — verificado).
+- **Enhanced (futuro):** 1º vídeo do **cinema** + 1º áudio do **casual** unidos por um serviço de
+  remux — spec em [../../enhanced/](../../enhanced/README.md).
+
+> **API irmã:** a descoberta de conteúdo (catálogos, fichas, IDs) é feita por outro addon, o **AIOMetadata**, documentado em [`../metadata/`](../metadata/README.md). O fluxo do StreamHub combina os dois: **AIOMetadata** diz *o que assistir* e entrega o ID externo (`tt…`, `mal:…`, `kitsu:…`); **AIOStreams** (esta API) diz *como assistir* (os links). O player (nativo ou Infuse) reproduz.
 
 ---
 
 ## 2. Anatomia da URL base
 
-Todas as rotas penduram em uma **URL base** com esta estrutura:
+Cada **perfil** tem sua própria URL base, todas com esta estrutura:
 
 ```
-https://spark.tailcb6aa4.ts.net/stremio/8b977f8f-511e-4a0a-93ab-eee540af8cb6/{CONFIG}
+https://spark.tailcb6aa4.ts.net/stremio/5fd3c25b-cad5-4086-8804-b8e4c9963a3d/{CONFIG}
 └──────┬─────────────────────┘└───┬──┘└──────────────┬───────────────────┘└───┬───┘
        host (Tailscale)         prefixo          instância (UUID)            token de config
 ```
 
-| Segmento | Valor nesta instância | Significado |
+| Segmento | Valor | Significado |
 |---|---|---|
-| `host` | `spark.tailcb6aa4.ts.net` | Host na tailnet. Só acessível por dispositivos na mesma rede Tailscale (ou via funnel, se exposto). |
+| `host` | `spark.tailcb6aa4.ts.net` | Host na tailnet, comum aos 3 perfis. Só acessível por dispositivos na mesma rede Tailscale (ou via funnel, se exposto). |
 | prefixo | `stremio` | Caminho fixo do AIOStreams. |
-| `instância` | `8b977f8f-511e-4a0a-93ab-eee540af8cb6` | UUID da instância/usuário no servidor AIOStreams. |
-| `{CONFIG}` | `eyJpIjoi…ifQ` | **Token de configuração** (ver abaixo). |
+| `instância` | um UUID **por perfil** (ver [Perfis](#perfis)) | UUID da instância/perfil no servidor AIOStreams. |
+| `{CONFIG}` | `eyJpIjoi…ifQ`, um **por perfil** | **Token de configuração** (ver abaixo). |
 
 ### O token `{CONFIG}`
 
@@ -58,12 +78,10 @@ https://spark.tailcb6aa4.ts.net/stremio/8b977f8f-511e-4a0a-93ab-eee540af8cb6/{CO
 ```
 
 - O conteúdo (`e`) contém as credenciais de debrid, scrapers habilitados, regras de ordenação/filtro etc. **Só o servidor AIOStreams consegue decifrar** (a chave fica no servidor). Para o StreamHub o token é **opaco**: copie-o verbatim na URL.
-- Valor real desta instância (segredo):
-  ```
-  eyJpIjoicWhoeXRrbDN1QjlUYmt0S21mMk10QT09IiwiZSI6ImFJb3lkTzRFVmdPTlNwSkN0Mzh0cHNOSUZ4a0FKTC9EYWVIdVpjTFRlMmc9IiwidCI6ImEifQ
-  ```
+- Cada perfil tem seu próprio token. As **bases completas reais** dos 3 perfis vivem no
+  `StreamHub/Secrets.plist` local (não versionado; template em `Secrets.example.plist`).
 
-> Recomendação de implementação: no StreamHub, armazene `host`, `uuid` e `CONFIG` separadamente (ex.: Keychain) e monte a URL base em runtime. Nunca commite a base completa fora deste repo interno.
+> Recomendação de implementação: no StreamHub, armazene a **base completa de cada perfil** no Keychain — chaves `AIOStreamsCinemaBase`/`AIOStreamsCasualBase`/`AIOStreamsAnimeBase`, bootstrap via `Secrets.plist` (`StreamHub/Playback/SecretsStore.swift`). Nunca commite as bases fora deste repo interno.
 
 ---
 
@@ -80,10 +98,10 @@ Todas retornam `application/json; charset=utf-8` e terminam em `.json`. `{BASE}`
 | Meta | `GET {BASE}/meta/{type}/{id}.json` | Metadados de um item do catálogo | [meta.md](./meta.md) |
 | Configure | `GET {BASE}/configure` | Página HTML de configuração (não-JSON) | — |
 
-Exemplo mínimo:
+Exemplo mínimo (a `BASE` de cada perfil está no `StreamHub/Secrets.plist`):
 
 ```bash
-BASE="https://spark.tailcb6aa4.ts.net/stremio/8b977f8f-511e-4a0a-93ab-eee540af8cb6/eyJpIjoicWhoeXRrbDN1QjlUYmt0S21mMk10QT09IiwiZSI6ImFJb3lkTzRFVmdPTlNwSkN0Mzh0cHNOSUZ4a0FKTC9EYWVIdVpjTFRlMmc9IiwidCI6ImEifQ"
+BASE=$(/usr/libexec/PlistBuddy -c "Print :AIOStreamsCinemaBase" StreamHub/Secrets.plist)
 curl -s "$BASE/manifest.json" | jq .
 curl -s "$BASE/stream/movie/tt0111161.json" | jq '.streams[0]'
 ```
@@ -122,11 +140,11 @@ Headers de rate limit retornados em cada resposta: `ratelimit-limit`, `ratelimit
 ## 6. Fluxo de uso no StreamHub
 
 ```
-0.      [AIOMetadata]               -> descobrir título e obter o ID externo (IMDb tt…)
-1. (1x) GET /manifest.json          -> descobrir capacidades/tipos suportados
-2. GET /stream/{type}/{id}.json      -> lista de streams candidatos
-3.      [filtrar + selecionar]       -> por qualidade/idioma/cache (ver stream.md §seleção)
-4.      reproduzir stream.url        -> player nativo OU handoff para o Infuse
+0.      [AIOMetadata]                        -> descobrir título e obter o ID (tt… / mal:… / kitsu:…)
+1.      [app] escolher o perfil              -> anime → anime; modo Dub → casual; modo Leg → cinema
+2. GET {BASE do perfil}/stream/{type}/{id}.json -> lista já filtrada e ordenada server-side
+3.      tomar o 1º stream playável           -> sem seleção client-side (ver stream.md §10)
+4.      reproduzir stream.url                -> handoff para o Infuse
 ```
 
 > O passo 0 é coberto pela [API de metadados (AIOMetadata)](../metadata/README.md).

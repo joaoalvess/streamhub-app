@@ -23,7 +23,7 @@ StreamHub is an Apple TV app that brings movies, series and anime into a single,
 
 - 🧩 **Native Stremio-style addons** — catalog, metadata, stream and subtitle providers as in-process Swift objects, aggregated in parallel by content type and ID prefix.
 - 🎬 **Rich catalogs** — focus-driven home with a hero banner, horizontal shelves, Top 10 and "Continue Watching".
-- 🌊 **Stream aggregation** — pulls ready-to-play HTTP(S) sources from a self-hosted [AIOStreams](https://github.com/Viren070/AIOStreams) instance (multi-scraper + TorBox debrid), prioritizing PT-BR audio.
+- 🌊 **Stream aggregation** — pulls ready-to-play HTTP(S) sources from a self-hosted [AIOStreams](https://github.com/Viren070/AIOStreams) setup (multi-scraper + TorBox debrid) split into three server-side profiles — dubbed PT-BR, subtitled and anime — so the first result is always the right one.
 - ▶️ **External player handoff** — opens streams in [Infuse](https://firecore.com/infuse) via `x-callback-url`, with two-way resume, external subtitles and TMDB metadata.
 - 🍿 **Native fallback player** — `AVPlayer`-based playback for HLS / MP4 / Matroska when Infuse isn't available.
 

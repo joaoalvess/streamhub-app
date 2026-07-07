@@ -242,7 +242,12 @@ Exemplo verbatim:
 
 ## 10. Seleção de stream (recomendações)
 
-Para escolher automaticamente o melhor stream no StreamHub:
+> **StreamHub (atual):** a seleção migrou para o **server-side** — cada perfil do AIOStreams
+> (cinema/casual/anime, ver [README §Perfis](./README.md#perfis)) devolve o melhor stream na
+> primeira posição e o app toca o **1º playável**. Os critérios abaixo ficam como referência para
+> calibrar os perfis.
+
+Para escolher automaticamente o melhor stream:
 
 1. **Filtrar** itens reais (`url` presente, sem `streamData.statistic`) — [§1](#1-envelope-da-resposta).
 2. **Validar correspondência** com o título/ano alvo (cruzar `filename` — lembre que ID inválido devolve streams genéricos, ver [id-formats §5](./id-formats.md#5-comportamento-com-id-inválidodesconhecido)).
