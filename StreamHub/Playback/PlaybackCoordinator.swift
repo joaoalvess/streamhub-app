@@ -2,7 +2,7 @@ import UIKit
 import Observation
 
 protocol EnhancedStreamProvider {
-    func remuxURL(video: StreamCandidate, audio: StreamCandidate, item: MediaItem) async throws -> URL
+    func remuxURL(videoURL: URL, audioURL: URL, item: MediaItem) async throws -> URL
 }
 
 @Observable
@@ -16,7 +16,6 @@ final class PlaybackCoordinator {
         case missingImdbId
         case notConfigured
         case noSources
-        case noValidSources
         case rateLimited
         case network
         case infuseNotInstalled
@@ -28,13 +27,11 @@ final class PlaybackCoordinator {
         var message: String {
             switch self {
             case .missingImdbId:
-                "Este título não tem identificador IMDb para buscar fontes."
+                "Este título não tem identificador para buscar fontes."
             case .notConfigured:
                 "Configure o servidor de streams (Secrets.plist) para reproduzir."
             case .noSources:
                 "Nenhuma fonte encontrada para este título."
-            case .noValidSources:
-                "As fontes encontradas não correspondem a este título."
             case .rateLimited:
                 "Muitas buscas em sequência. Tente novamente em instantes."
             case .network:
@@ -80,7 +77,7 @@ final class PlaybackCoordinator {
     }
 
     func play(item: MediaItem, mode: PlaybackMode) async {
-        guard state != .loading, item.kind == .movie else { return }
+        guard state != .loading, item.kind == .movie || item.isAnime else { return }
         switch route(for: item) {
         case .externalService(let service):
             await openExternal(service)
@@ -118,18 +115,34 @@ final class PlaybackCoordinator {
     }
 
     private func playViaInfuse(item: MediaItem, mode: PlaybackMode) async {
-        guard mode.isAvailable else {
-            state = .failed(.enhancedUnavailable)
-            return
-        }
-        guard let imdbId = Self.imdbId(for: item) else {
-            state = .failed(.missingImdbId)
-            return
+        let profile: StreamProfile
+        let type: String
+        let id: String
+        if item.isAnime {
+            guard let animeId = Self.animeStreamId(for: item) else {
+                state = .failed(.missingImdbId)
+                return
+            }
+            profile = .anime
+            type = "anime"
+            id = animeId
+        } else {
+            guard let modeProfile = StreamProfile(mode: mode) else {
+                state = .failed(.enhancedUnavailable)
+                return
+            }
+            guard let imdbId = Self.imdbId(for: item) else {
+                state = .failed(.missingImdbId)
+                return
+            }
+            profile = modeProfile
+            type = "movie"
+            id = imdbId
         }
         state = .loading
         let streams: [AddonStream]
         do {
-            streams = try await fetchStreams(imdbId: imdbId)
+            streams = try await fetchStreams(profile: profile, type: type, id: id)
         } catch let error as StreamsAPIError {
             state = .failed(Self.playbackError(for: error))
             return
@@ -137,17 +150,8 @@ final class PlaybackCoordinator {
             state = .failed(.network)
             return
         }
-        let playable = StreamSelector.playable(from: streams)
-        guard !playable.isEmpty else {
-            state = .failed(.noSources)
-            return
-        }
-        let validated = StreamSelector.validated(playable, title: item.title, year: item.year)
-        guard !validated.isEmpty else {
-            state = .failed(.noValidSources)
-            return
-        }
-        guard let chosen = StreamSelector.best(validated, mode: mode) else {
+        guard let chosen = streams.first(where: \.isPlayable),
+              let videoURL = chosen.playbackURL else {
             state = .failed(.noSources)
             return
         }
@@ -155,43 +159,49 @@ final class PlaybackCoordinator {
             state = .failed(.infuseNotInstalled)
             return
         }
-        let contentId = item.contentId ?? imdbId
+        let contentId = item.contentId ?? id
         let runtimeMinutes = Self.runtimeMinutes(from: item.runtime)
         let playItem = InfusePlayItem(
-            videoURL: chosen.videoURL,
-            filename: Self.infuseFilename(for: item, candidate: chosen),
+            videoURL: videoURL,
+            filename: Self.infuseFilename(for: item, filename: chosen.behaviorHints?.filename),
             positionSeconds: resumePosition(for: contentId, runtimeMinutes: runtimeMinutes)
         )
         guard let url = InfuseURLBuilder.playURL(item: playItem) else {
             state = .failed(.openFailed)
             return
         }
-        let videoURL = chosen.videoURL.absoluteString
+        let videoURLString = videoURL.absoluteString
         progressStore.registerSession(
-            videoURL: videoURL,
-            entry: Self.resumeEntry(for: item, contentId: contentId, imdbId: imdbId, runtimeMinutes: runtimeMinutes)
+            videoURL: videoURLString,
+            entry: Self.resumeEntry(
+                for: item,
+                contentId: contentId,
+                imdbId: Self.imdbId(for: item),
+                runtimeMinutes: runtimeMinutes
+            )
         )
         if await InfuseLauncher.open(url) {
             state = .idle
         } else {
-            progressStore.discardSession(videoURL: videoURL)
+            progressStore.discardSession(videoURL: videoURLString)
             state = .failed(.openFailed)
         }
     }
 
-    private func fetchStreams(imdbId: String) async throws -> [AddonStream] {
-        if let cached = cache[imdbId], Date().timeIntervalSince(cached.fetchedAt) < Self.cacheTTL {
+    private func fetchStreams(profile: StreamProfile, type: String, id: String) async throws -> [AddonStream] {
+        let key = "\(profile.rawValue)|\(type)|\(id)"
+        if let cached = cache[key], Date().timeIntervalSince(cached.fetchedAt) < Self.cacheTTL {
             return cached.streams
         }
-        if let running = inFlight[imdbId] {
+        if let running = inFlight[key] {
             return try await running.value
         }
         let api = self.api
-        let task = Task { try await api.movieStreams(imdbId: imdbId) }
-        inFlight[imdbId] = task
-        defer { inFlight[imdbId] = nil }
+        let task = Task { try await api.streams(profile: profile, type: type, id: id) }
+        inFlight[key] = task
+        defer { inFlight[key] = nil }
         let streams = try await task.value
-        cache[imdbId] = (Date(), streams)
+        cache[key] = (Date(), streams)
         return streams
     }
 
@@ -208,6 +218,11 @@ final class PlaybackCoordinator {
         if let id = item.imdbId, id.hasPrefix("tt") { return id }
         if let id = item.contentId, id.hasPrefix("tt") { return id }
         return nil
+    }
+
+    private static func animeStreamId(for item: MediaItem) -> String? {
+        if let id = item.contentId, id.hasPrefix("mal:") || id.hasPrefix("kitsu:") { return id }
+        return imdbId(for: item)
     }
 
     private static func playbackError(for error: StreamsAPIError) -> PlaybackError {
@@ -231,9 +246,9 @@ final class PlaybackCoordinator {
         return Int(match.1)
     }
 
-    private static func infuseFilename(for item: MediaItem, candidate: StreamCandidate) -> String {
+    private static func infuseFilename(for item: MediaItem, filename: String?) -> String {
         let knownExtensions: Set<String> = ["mkv", "mp4", "m4v", "avi", "ts", "webm", "mov"]
-        let ext = candidate.filename
+        let ext = filename
             .map { ($0 as NSString).pathExtension.lowercased() }
             .flatMap { knownExtensions.contains($0) ? $0 : nil }
             ?? "mkv"
@@ -244,7 +259,7 @@ final class PlaybackCoordinator {
     private static func resumeEntry(
         for item: MediaItem,
         contentId: String,
-        imdbId: String,
+        imdbId: String?,
         runtimeMinutes: Int?
     ) -> ResumeEntry {
         ResumeEntry(

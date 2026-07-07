@@ -63,6 +63,19 @@ struct StreamsAPITests {
         #expect(!stream.isPlayable)
     }
 
+    @Test func firstPlayableStreamSkipsStatisticEntries() throws {
+        let json = Data("""
+        {"streams":[
+            {"name":"🟢 Scrape Summary","externalUrl":"https://example.com/summary","streamData":{"type":"statistic"}},
+            {"name":"[TB+] Perfil 2160p","url":"https://cdn.example/primeiro.mkv"},
+            {"name":"[TB+] Perfil 1080p","url":"https://cdn.example/segundo.mkv"}
+        ]}
+        """.utf8)
+        let response = try JSONDecoder().decode(StreamsResponse.self, from: json)
+        let chosen = try #require(response.streams.first(where: \.isPlayable))
+        #expect(chosen.playbackURL?.absoluteString == "https://cdn.example/primeiro.mkv")
+    }
+
     @Test func gateDelaysCallsBeyondWindowLimit() async {
         let gate = RequestGate(limit: 2, window: .milliseconds(250))
         let clock = ContinuousClock()

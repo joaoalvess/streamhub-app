@@ -35,8 +35,6 @@ nonisolated struct SecretsStore {
         return URL(string: normalized)
     }
 
-    var aioStreamsBase: URL? { streamsBase(for: .cinema) }
-
     var metadataBase: URL? {
         read(.aioMetadataBase).flatMap(URL.init(string:))
     }

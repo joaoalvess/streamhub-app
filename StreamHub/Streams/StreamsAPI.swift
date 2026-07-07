@@ -12,21 +12,21 @@ nonisolated enum StreamsAPIError: Error {
 nonisolated struct StreamsAPI {
     let session: URLSession
     let gate: RequestGate
-    let baseProvider: () -> URL?
+    let baseProvider: (StreamProfile) -> URL?
 
     init(
         session: URLSession = .shared,
         gate: RequestGate = .shared,
-        baseProvider: @escaping () -> URL? = { SecretsStore.shared.aioStreamsBase }
+        baseProvider: @escaping (StreamProfile) -> URL? = { SecretsStore.shared.streamsBase(for: $0) }
     ) {
         self.session = session
         self.gate = gate
         self.baseProvider = baseProvider
     }
 
-    func movieStreams(imdbId: String) async throws -> [AddonStream] {
-        guard let base = baseProvider() else { throw StreamsAPIError.notConfigured }
-        guard let url = URL(string: base.absoluteString + "/stream/movie/\(imdbId).json") else {
+    func streams(profile: StreamProfile, type: String, id: String) async throws -> [AddonStream] {
+        guard let base = baseProvider(profile) else { throw StreamsAPIError.notConfigured }
+        guard let url = URL(string: base.absoluteString + "/stream/\(type)/\(id).json") else {
             throw StreamsAPIError.invalidURL
         }
         return try await fetch(url, attempt: 0).streams

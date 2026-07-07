@@ -12,13 +12,16 @@ nonisolated struct AddonStream: Decodable, Sendable {
     let behaviorHints: StreamBehaviorHints?
     let streamData: StreamDataTag?
 
-    var isPlayable: Bool {
+    var playbackURL: URL? {
         guard streamData?.type != "statistic",
               let url,
               let parsed = URL(string: url),
-              let scheme = parsed.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
+              let scheme = parsed.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else { return nil }
+        return parsed
     }
+
+    var isPlayable: Bool { playbackURL != nil }
 }
 
 nonisolated struct StreamBehaviorHints: Decodable, Sendable {
