@@ -7,9 +7,9 @@ nonisolated struct SecretsStore {
     private static let service = "joaoalvess.StreamHub.secrets"
 
     nonisolated enum Key: String, CaseIterable {
-        case aioStreamsHost = "AIOStreamsHost"
-        case aioStreamsUUID = "AIOStreamsUUID"
-        case aioStreamsConfig = "AIOStreamsConfig"
+        case aioStreamsCinemaBase = "AIOStreamsCinemaBase"
+        case aioStreamsCasualBase = "AIOStreamsCasualBase"
+        case aioStreamsAnimeBase = "AIOStreamsAnimeBase"
         case aioMetadataBase = "AIOMetadataBase"
     }
 
@@ -24,12 +24,18 @@ nonisolated struct SecretsStore {
         }
     }
 
-    var aioStreamsBase: URL? {
-        guard let host = read(.aioStreamsHost),
-              let uuid = read(.aioStreamsUUID),
-              let config = read(.aioStreamsConfig) else { return nil }
-        return URL(string: "https://\(host)/stremio/\(uuid)/\(config)")
+    func streamsBase(for profile: StreamProfile) -> URL? {
+        let key: Key = switch profile {
+        case .cinema: .aioStreamsCinemaBase
+        case .casual: .aioStreamsCasualBase
+        case .anime: .aioStreamsAnimeBase
+        }
+        guard let value = read(key) else { return nil }
+        let normalized = value.hasSuffix("/") ? String(value.dropLast()) : value
+        return URL(string: normalized)
     }
+
+    var aioStreamsBase: URL? { streamsBase(for: .cinema) }
 
     var metadataBase: URL? {
         read(.aioMetadataBase).flatMap(URL.init(string:))
