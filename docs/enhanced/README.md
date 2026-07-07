@@ -6,7 +6,7 @@ tipo: spec
 relevancia_para_streamhub: alta
 status: "aprovado pelo usuário — pronto para implementar sem nova entrevista"
 depende_de:
-  - "Fase 1 implementada no app: StreamsAPI, StreamSelector, PlaybackCoordinator, InfusePlayer, SecretsStore (ver seção 7)"
+  - "Fase 1 implementada no app: StreamsAPI, StreamProfile (perfis cinema/casual/anime), PlaybackCoordinator, InfusePlayer, SecretsStore (ver seção 7)"
   - "docs/api/streams/ (contrato do AIOStreams)"
   - "docs/player/infuse/ (contrato do deep link)"
 ---
@@ -20,14 +20,15 @@ depende_de:
 
 ## TL;DR
 
-- **Produto:** terceiro modo do seletor de reprodução ("Enhanced"): vídeo do release de **maior
-  qualidade** (4K HDR/Dolby Vision, tipicamente sem áudio PT) + faixa de **áudio PT-BR** de um
-  release dublado — "o melhor dos dois mundos".
+- **Produto:** terceiro modo do seletor de reprodução ("Enhanced"): vídeo do **1º stream do perfil
+  cinema** (4K HDR/Dolby Vision, tipicamente sem áudio PT) + faixa de **áudio PT-BR do 1º stream
+  do perfil casual** — "o melhor dos dois mundos". Todo ranking/filtragem é server-side, nos
+  perfis do AIOStreams.
 - **Por que um serviço:** o Infuse aceita **uma** URL de vídeo (+ `sub=`); não existe parâmetro de
   faixa de áudio externa. A junção acontece **server-side**: serviço companion self-hosted no mesmo
   host Tailscale do AIOStreams (`spark.tailcb6aa4.ts.net`), com **ffmpeg em modo remux** (`-c copy`,
   sem re-encode).
-- **Fluxo:** app escolhe o par (vídeo top + áudio PT) → `GET /probe` valida sincronia → abre o
+- **Fluxo:** app monta o par (1º do cinema + 1º do casual) → `GET /probe` valida sincronia → abre o
   Infuse com a URL `GET /play` do serviço → serviço puxa os 2 streams do CDN do TorBox e responde o
   MKV remuxado em chunked streaming.
 
@@ -39,27 +40,22 @@ depende_de:
 | Stack | Node.js + ffmpeg via `spawn`, container Docker (compose) |
 | Acesso | Restrito à tailnet + `key` simples em query string |
 | Transcode | **Nunca.** Só remux (`-c copy`) — CPU irrisória, qualidade intacta |
-| Elegibilidade | Ambos os candidatos **cacheados** (`[TB+]`); não-cacheado é inelegível |
+| Elegibilidade | Garantida **server-side** pelos perfis do AIOStreams (cache/qualidade já filtrados); o app não inspeciona nomes ou tags |
 | Par degenerado | Se o melhor vídeo já tem áudio PT (vídeo top == candidato áudio), pular o serviço e tocar direto (equivale ao Dublado) |
 | Sincronia | Guard de duração `|durVideo − durAudio| ≤ 2.0s`; divergiu → erro + CTA de cair para Dublado (offset fino é v2) |
 | Player | Infuse, mesmo handoff da fase 1 (`infuse://x-callback-url/play`), filename `"{título} ({ano}).mkv"` |
 | UX de erro | Mensagens dedicadas: par incompatível, serviço offline; sempre sugerindo o modo Dublado como fallback |
 
-## 2. Seleção do par (no app — infra já existe)
+## 2. Seleção do par (no app — trivial com os perfis)
 
-Usar `StreamSelector`/`StreamCandidate` da fase 1 (`StreamHub/Streams/`):
+A seleção client-side foi removida do app: cada perfil do AIOStreams entrega o resultado perfeito
+na primeira posição. O par sai de duas chamadas `StreamsAPI.streams(profile:type:id:)`:
 
-- **Candidato VÍDEO:** ranking do modo `subtitled` (melhor qualidade geral:
-  `hasOriginalAudio > isCached > resolution > hdrScore > sizeBytes > seeds`), filtrado por
-  `isCached == true`.
-- **Candidato ÁUDIO:** ranking do modo `dubbed` restrito a `hasPTAudio == true` e
-  `isCached == true`; empate → **menor** `sizeBytes` (só o áudio interessa; arquivo menor = remux
-  mais leve para o servidor).
-- Ambos precisam passar por `StreamSelector.validated(_:title:year:)` (defesa contra streams
-  genéricos de ID inválido).
-- Se `vídeo.videoURL == áudio.videoURL` → tocar direto no Infuse sem serviço.
-- Sem par válido (não há PT cacheado, ou não há vídeo cacheado) → erro `enhancedNoPair` com
-  sugestão de Dublado.
+- **Candidato VÍDEO:** 1º stream playável (`AddonStream.playbackURL != nil`) do perfil
+  **cinema** — melhor release geral (4K HDR/DV), tipicamente sem áudio PT.
+- **Candidato ÁUDIO:** 1º stream playável do perfil **casual** — melhor release dublado PT-BR.
+- Se as duas URLs forem iguais → tocar direto no Infuse sem serviço (par degenerado).
+- Qualquer um dos perfis sem stream playável → erro `enhancedNoPair` com sugestão de Dublado.
 - **URLs frescas:** URLs de debrid expiram (token de sessão). Buscar `/stream` na hora do play
   (o cache de 60s do `PlaybackCoordinator` é aceitável; nunca persistir URLs).
 
@@ -116,12 +112,12 @@ Pontos de extensão **já existentes** na fase 1:
 - `StreamHub/Playback/PlaybackCoordinator.swift` → protocolo `EnhancedStreamProvider` já declarado:
   ```swift
   protocol EnhancedStreamProvider {
-      func remuxURL(video: StreamCandidate, audio: StreamCandidate, item: MediaItem) async throws -> URL
+      func remuxURL(videoURL: URL, audioURL: URL, item: MediaItem) async throws -> URL
   }
   ```
   Implementar `RemuxServiceProvider` (chama `/probe`, monta `/play`) e injetar no coordinator.
-  No `playViaInfuse`, o caso `.enhanced` passa a: selecionar par (seção 2) → provider → handoff
-  Infuse idêntico (mesmo `registerSession`/resume).
+  No `playViaInfuse`, o caso `.enhanced` passa a: buscar o 1º do cinema + o 1º do casual
+  (seção 2) → provider → handoff Infuse idêntico (mesmo `registerSession`/resume).
 - `StreamHub/Playback/SecretsStore.swift` → novas chaves `EnhancerBase` e `EnhancerKey` no
   `Secrets.plist`/Keychain (mesmo mecanismo de bootstrap).
 - Novos `PlaybackError`: `enhancedNoPair` ("Não há um par de fontes compatível…"),
@@ -133,13 +129,13 @@ Pontos de extensão **já existentes** na fase 1:
 
 | Peça | Arquivo |
 |---|---|
-| Client `/stream` com throttle 5/5s e 429 | `StreamHub/Streams/StreamsAPI.swift` |
-| Parsing de qualidade/idioma/cache (`[TB+]`, bandeiras, bingeGroup) | `StreamHub/Streams/StreamCandidate.swift` |
-| Validação título/ano + rankings dublado/legendado | `StreamHub/Streams/StreamSelector.swift` |
+| Client `/stream` por perfil com throttle 5/5s e 429 | `StreamHub/Streams/StreamsAPI.swift` |
+| Perfis de stream (cinema/casual/anime) + mapa modo→perfil | `StreamHub/Streams/StreamProfile.swift` |
+| Contrato do 1º resultado (`playbackURL`/`isPlayable`) | `StreamHub/Streams/StreamModels.swift` |
 | Handoff Infuse (builder/callback/launcher, schemes no Info.plist) | `StreamHub/Playback/InfusePlayer.swift` + `StreamHub/Info.plist` |
 | Resume + Continue Watching (sessões por videoURL) | `StreamHub/Playback/PlaybackProgressStore.swift` |
 | Orquestração, erros PT-BR, cache 60s, rota streaming-assinado | `StreamHub/Playback/PlaybackCoordinator.swift` |
-| Segredos Keychain + bootstrap `Secrets.plist` | `StreamHub/Playback/SecretsStore.swift` |
+| Segredos Keychain + bootstrap `Secrets.plist` (uma base por perfil) | `StreamHub/Playback/SecretsStore.swift` |
 
 ## 8. Critérios de aceite
 
@@ -148,7 +144,7 @@ Pontos de extensão **já existentes** na fase 1:
 2. Melhor vídeo já dublado → toca direto (sem passar pelo serviço).
 3. Par com durações divergentes → alerta "versões incompatíveis" + sugestão de Dublado; nada trava.
 4. Serviço desligado → alerta "serviço inacessível"; Dublado/Legendado seguem funcionando.
-5. Sem release PT cacheado → alerta "sem par compatível".
+5. Perfil casual (ou cinema) sem stream playável → alerta "sem par compatível".
 6. Resume: sair do Infuse durante um Enhanced atualiza o Continue Watching como nos outros modos
    (a sessão é registrada com a URL do **serviço** — é ela que volta no `lastPlayedUrl`).
 7. Nenhum log (app ou serviço) contém URLs com token.
