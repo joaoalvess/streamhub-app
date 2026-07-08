@@ -5,7 +5,7 @@ objetivo: "Referência completa e verbatim do esquema de URL do Infuse: ações 
 ordem: 1
 tipo: referencia
 relevancia_para_streamhub: alta
-atualizado_em: "2026-06-24"
+atualizado_em: "2026-07-08"
 fontes_oficiais:
   - "https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services"
   - "https://x-callback-url.com/specification/"
@@ -210,8 +210,8 @@ Exemplos oficiais:
 Regras práticas para o StreamHub:
 
 1. **Percent-encode o valor de cada parâmetro** (`url`, `sub`, `x-success`, `x-error`, `filename`) — não a URL inteira do `infuse://`.
-2. Use um conjunto de caracteres permitidos que **exclua** `&`, `=`, `?`, `/`, `:` dos valores (em Swift: monte com `URLComponents`/`URLQueryItem`, que faz isso corretamente — ver [integration-guide.md](./integration-guide.md)).
-3. URLs de debrid costumam ter query strings próprias (`?token=...&exp=...`) — sem encoding, esses `&`/`=` quebrariam o parsing do Infuse. Encoding resolve.
+2. Use um conjunto de caracteres permitidos que **exclua** `&`, `=`, `?`, `/`, `:` dos valores. ⚠️ Em Swift, o setter `queryItems` do `URLComponents` **não cumpre essa regra**: ele escapa `&`/`=`/`%`, mas deixa `?`, `:` e `/` **crus** nos valores (são válidos em query por RFC 3986). Encode cada valor integralmente para o conjunto unreserved (`A-Za-z0-9-._~`) com `addingPercentEncoding` e monte via `percentEncodedQueryItems` — é o formato do exemplo "Encoded" oficial acima. Ver [integration-guide.md](./integration-guide.md) §3.
+3. URLs de debrid/resolvers costumam ter query strings próprias (`?token=...&exp=...`) — sem encoding total, o parser do Infuse mutila o valor no `?` cru da URL interna (comprovado com URLs do Comet: sem a query interna o resolver responde `422` e o Infuse dispara `x-error`).
 
 ---
 

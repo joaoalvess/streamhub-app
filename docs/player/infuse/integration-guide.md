@@ -5,7 +5,7 @@ objetivo: "Passo a passo de como o StreamHub monta a URL infuse:// a partir de u
 ordem: 2
 tipo: guia
 relevancia_para_streamhub: alta
-atualizado_em: "2026-06-24"
+atualizado_em: "2026-07-08"
 fontes_oficiais:
   - "https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services"
   - "https://developer.apple.com/documentation/uikit/uiapplication/canopenurl(_:)"
@@ -23,7 +23,7 @@ Fluxo do StreamHub para "abrir um stream no Infuse":
 
 1. **Mapear** o `Stream` do addon (AIOStreams) → uma URL HTTP(S) reproduzível + metadados (título, posição, legendas).
 2. **Filtrar**: só faz sentido se `stream.url` for HTTP/HTTPS. Magnet/`infoHash` e fontes não-HTTP **não** vão pro esquema do Infuse (ver [url-schemes.md](./url-schemes.md) §6).
-3. **Montar** `infuse://x-callback-url/play?...` com `URLComponents`/`URLQueryItem` (encoding correto e automático).
+3. **Montar** `infuse://x-callback-url/play?...` encodando **cada valor integralmente** (unreserved RFC 3986) via `addingPercentEncoding` + `percentEncodedQueryItems` — o setter `queryItems` deixa `?`/`:`/`/` crus e o Infuse mutila URLs com query interna.
 4. **Detectar** o Infuse (iOS/iPadOS): `LSApplicationQueriesSchemes` + `UIApplication.canOpenURL`. Em tvOS, ver [platforms.md](./platforms.md) — checagem/abertura têm caveats.
 5. **Abrir**: `UIApplication.shared.open(url)`.
 6. **Receber callback**: registrar um esquema próprio (ex.: `streamhub://`) e tratar `x-success` (`lastPlayedUrl` + `position`) para persistir resume, e `x-error` para fallback.
@@ -107,12 +107,20 @@ O esquema **não tem campo "título" livre**. O Infuse usa o `filename` para um 
 
 ## 3. Montar a URL `infuse://...play` em Swift
 
-**Use `URLComponents` + `URLQueryItem`.** Isso resolve o encoding obrigatório (ver [url-schemes.md](./url-schemes.md) §5) automaticamente e suporta `url` repetido (playlist), já que `queryItems` é um array que aceita chaves duplicadas.
+**Use `URLComponents` com `percentEncodedQueryItems` e valores integralmente percent-encodados** (unreserved RFC 3986: `A-Za-z0-9-._~`). O setter `queryItems` **não** cumpre o encoding obrigatório (ver [url-schemes.md](./url-schemes.md) §5): ele escapa `&`/`=`/`%` mas deixa `?`, `:` e `/` crus no valor — com streams cuja URL tem query interna (ex.: Comet `?torrent_name=...`), o parser do Infuse mutila a URL e a reprodução falha com `x-error`. A montagem por itens continua suportando `url` repetido (playlist).
 
 ```swift
 import Foundation
 
 enum InfuseURLBuilder {
+
+    /// RFC 3986 unreserved (ASCII). Todo o resto vira %XX — inclusive
+    /// ':', '/', '?', '+', '&', '=' e '%'. Nunca inclua '%' neste set:
+    /// re-encodar '%' como %25 é o que mantém o precondition do setter
+    /// percentEncodedQueryItems inalcançável para qualquer input.
+    private static let queryValueAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
 
     /// Monta infuse://x-callback-url/play?... para 1+ itens.
     /// callbackBase: esquema de retorno do app, ex.: "streamhub://infuse"
@@ -128,39 +136,42 @@ enum InfuseURLBuilder {
         components.host = "x-callback-url"
         components.path = "/play"
 
-        var queryItems: [URLQueryItem] = []
+        var pairs: [(name: String, value: String)] = []
 
         // Parâmetros repetíveis são associados POSICIONALMENTE pela ordem de
         // aparição (1º url ↔ 1º position ↔ 1º filename ↔ 1º sub). Por isso
         // emitimos os campos de cada item juntos, na ordem.
         for item in items {
-            queryItems.append(URLQueryItem(name: "url", value: item.videoURL.absoluteString))
+            pairs.append(("url", item.videoURL.absoluteString))
             if let pos = item.resumePositionSeconds {
-                queryItems.append(URLQueryItem(name: "position", value: String(pos)))
+                pairs.append(("position", String(pos)))
             }
             if let name = item.filename {
-                queryItems.append(URLQueryItem(name: "filename", value: name))
+                pairs.append(("filename", name))
             }
             if let sub = item.subtitleURL {
-                queryItems.append(URLQueryItem(name: "sub", value: sub.absoluteString))
+                pairs.append(("sub", sub.absoluteString))
             }
         }
 
         if let s = successCallback {
-            queryItems.append(URLQueryItem(name: "x-success", value: s))
+            pairs.append(("x-success", s))
         }
         if let e = errorCallback {
-            queryItems.append(URLQueryItem(name: "x-error", value: e))
+            pairs.append(("x-error", e))
         }
 
-        components.queryItems = queryItems
-
-        // URLComponents percent-encoda os valores, mas NÃO encoda '+' nem alguns
-        // caracteres em querystrings legadas. Forçamos o encode de '+' para evitar
-        // que o Infuse o interprete como espaço.
-        if let q = components.percentEncodedQuery {
-            components.percentEncodedQuery = q.replacingOccurrences(of: "+", with: "%2B")
+        // Encode integral de cada VALOR — formato do exemplo "Encoded" da doc
+        // oficial (http%3A%2F%2F...), o mesmo que o Stremio envia. É isso que
+        // impede o parser do Infuse de mutilar URLs com query interna.
+        var encodedItems: [URLQueryItem] = []
+        for pair in pairs {
+            guard let encoded = pair.value.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) else {
+                return nil
+            }
+            encodedItems.append(URLQueryItem(name: pair.name, value: encoded))
         }
+        components.percentEncodedQueryItems = encodedItems
 
         return components.url
     }
@@ -182,9 +193,9 @@ if let url = InfuseURLBuilder.playURL(items: [item]) {
 }
 ```
 
-### 3.2. Por que não concatenar strings à mão
+### 3.2. Por que não concatenar strings à mão (nem confiar no `queryItems`)
 
-URLs de debrid quase sempre têm query própria (`?token=...&exp=...`). Se você fizer `"infuse://...play?url=\(videoURL)"` sem encodar, os `&`/`=`/`?` da URL do vídeo vão **vazar** para a querystring do `infuse://` e o Infuse vai parsear errado. `URLQueryItem` encoda esses caracteres no **valor**, preservando a estrutura. (Regra de encoding oficial: [url-schemes.md](./url-schemes.md) §5.)
+URLs de debrid quase sempre têm query própria (`?token=...&exp=...`). Se você fizer `"infuse://...play?url=\(videoURL)"` sem encodar, os `&`/`=`/`?` da URL do vídeo vão **vazar** para a querystring do `infuse://` e o Infuse vai parsear errado. O setter `queryItems` só resolve parte: escapa `&`/`=`/`%`, mas deixa `?`/`:`/`/` **crus** no valor — na prática o Infuse mutila a URL interna no `?` cru (visto com resolvers tipo Comet, que exigem a própria query e respondem `422` sem ela). Daí o encode integral do valor no builder acima. (Regra de encoding oficial: [url-schemes.md](./url-schemes.md) §5.)
 
 ---
 
@@ -320,7 +331,7 @@ Notas:
 
 - [ ] `LSApplicationQueriesSchemes` contém `infuse` (detecção).
 - [ ] `CFBundleURLTypes` registra o esquema de callback (ex.: `streamhub`).
-- [ ] Builder usa `URLComponents`/`URLQueryItem` (encoding correto) — nunca concatenação de string.
+- [ ] Builder percent-encoda cada valor integralmente (unreserved RFC 3986) e monta via `percentEncodedQueryItems` — nunca `queryItems` cru nem concatenação de string.
 - [ ] Só oferecer "Abrir no Infuse" quando `stream.url` for HTTP/HTTPS (filtrar magnet/infoHash).
 - [ ] `canOpenURL` cacheado (limite de 50 chamadas).
 - [ ] Fallback para player nativo / prompt de instalação quando `isInstalled == false`.

@@ -5,7 +5,7 @@ objetivo: "Índice e visão geral de como o StreamHub abre streams no player ext
 ordem: 0
 tipo: indice
 relevancia_para_streamhub: alta
-atualizado_em: "2026-06-24"
+atualizado_em: "2026-07-08"
 fontes_oficiais:
   - "https://support.firecore.com/hc/en-us/articles/215090997-API-for-Third-Party-Apps-Services"
   - "https://firecore.com/releases"
@@ -102,7 +102,7 @@ iPad, Apple TV, Mac, and Vision"* / *"Infuse version: 8.4.7 (or later)"*.
   magnet/`infoHash`).
 - **Sempre ter fallback** para o **player nativo** do StreamHub (cobre magnet/HLS/headers e o caso
   "Infuse não instalado" / cross-app falho no tvOS).
-- **Montar a URL com `URLComponents`/`URLQueryItem`** (encoding obrigatório correto) — nunca string.
+- **Montar a URL encodando cada valor integralmente** (unreserved RFC 3986, via `percentEncodedQueryItems`) — o setter `queryItems` deixa `?`/`:`/`/` crus e o Infuse mutila URLs com query interna; nunca concatenação de string.
 
 ## Glossário (termos canônicos)
 
