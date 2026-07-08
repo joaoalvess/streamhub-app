@@ -10,6 +10,10 @@ nonisolated enum InfuseURLBuilder {
     static let successCallback = "streamhub://infuse/success"
     static let errorCallback = "streamhub://infuse/error"
 
+    private static let queryValueAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+
     static func playURL(
         item: InfusePlayItem,
         success: String? = successCallback,
@@ -20,24 +24,28 @@ nonisolated enum InfuseURLBuilder {
         components.host = "x-callback-url"
         components.path = "/play"
 
-        var queryItems = [URLQueryItem(name: "url", value: item.videoURL.absoluteString)]
+        var pairs: [(name: String, value: String)] = [("url", item.videoURL.absoluteString)]
         if let position = item.positionSeconds {
-            queryItems.append(URLQueryItem(name: "position", value: String(position)))
+            pairs.append(("position", String(position)))
         }
         if let filename = item.filename {
-            queryItems.append(URLQueryItem(name: "filename", value: filename))
+            pairs.append(("filename", filename))
         }
         if let success {
-            queryItems.append(URLQueryItem(name: "x-success", value: success))
+            pairs.append(("x-success", success))
         }
         if let error {
-            queryItems.append(URLQueryItem(name: "x-error", value: error))
+            pairs.append(("x-error", error))
         }
-        components.queryItems = queryItems
 
-        if let encoded = components.percentEncodedQuery {
-            components.percentEncodedQuery = encoded.replacingOccurrences(of: "+", with: "%2B")
+        var encodedItems: [URLQueryItem] = []
+        for pair in pairs {
+            guard let encoded = pair.value.addingPercentEncoding(withAllowedCharacters: queryValueAllowed) else {
+                return nil
+            }
+            encodedItems.append(URLQueryItem(name: pair.name, value: encoded))
         }
+        components.percentEncodedQueryItems = encodedItems
         return components.url
     }
 }

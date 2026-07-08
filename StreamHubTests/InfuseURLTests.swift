@@ -82,4 +82,62 @@ struct InfuseURLTests {
         #expect(InfuseCallback(url: wrongHost) == nil)
         #expect(InfuseCallback(url: wrongPath) == nil)
     }
+
+    @Test func fullyEncodesReservedDelimitersInQueryValues() throws {
+        let video = try #require(URL(
+            string: "https://comet.example/eyJhIjoiYiJ9/playback/8592abcdef/0/0/n/n?torrent_name=Free.Guy.mkv&name=Free%20Guy&media_id=tt6264654"
+        ))
+        let item = InfusePlayItem(
+            videoURL: video,
+            filename: "Free Guy: Assumindo o Controle (2021).mkv",
+            positionSeconds: nil
+        )
+        let url = try #require(InfuseURLBuilder.playURL(item: item))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let query = try #require(components.percentEncodedQuery)
+
+        #expect(!query.contains("?"))
+        #expect(!query.contains(":"))
+        #expect(!query.contains("/"))
+        #expect(!query.contains("+"))
+        let urlValue = try #require(components.percentEncodedQueryItems?.first { $0.name == "url" }?.value)
+        #expect(urlValue.hasPrefix("https%3A%2F%2F"))
+    }
+
+    @Test func roundTripsCometStyleURLExactly() throws {
+        let video = try #require(URL(
+            string: "https://comet.feels.legal/eyJkZWJyaWQiOiJ0b3Jib3gifQ%3D%3D/playback/8592abcdef/0/0/n/n?torrent_name=Free%20Guy%202021&name=Free%2520Guy&media_id=tt6264654"
+        ))
+        let item = InfusePlayItem(videoURL: video, filename: nil, positionSeconds: nil)
+        let url = try #require(InfuseURLBuilder.playURL(item: item))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        #expect(try value("url", in: url) == video.absoluteString)
+        #expect(components.percentEncodedQuery?.contains("%253D") == true)
+        #expect(components.percentEncodedQuery?.contains("%2520") == true)
+    }
+
+    @Test func encodesFilenameWithColonAndSpaces() throws {
+        let video = try #require(URL(string: "https://cdn.example/file.mkv"))
+        let filename = "Free Guy: Assumindo o Controle (2021).mkv"
+        let item = InfusePlayItem(videoURL: video, filename: filename, positionSeconds: nil)
+        let url = try #require(InfuseURLBuilder.playURL(item: item))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        #expect(components.percentEncodedQuery?.contains("Free%20Guy%3A%20Assumindo") == true)
+        #expect(try value("filename", in: url) == filename)
+    }
+
+    @Test func fullyEncodesCallbackURLs() throws {
+        let video = try #require(URL(string: "https://cdn.example/file.mkv"))
+        let item = InfusePlayItem(videoURL: video, filename: nil, positionSeconds: nil)
+        let url = try #require(InfuseURLBuilder.playURL(item: item))
+        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let query = try #require(components.percentEncodedQuery)
+
+        #expect(query.contains("x-success=streamhub%3A%2F%2Finfuse%2Fsuccess"))
+        #expect(query.contains("x-error=streamhub%3A%2F%2Finfuse%2Ferror"))
+        #expect(try value("x-success", in: url) == InfuseURLBuilder.successCallback)
+        #expect(try value("x-error", in: url) == InfuseURLBuilder.errorCallback)
+    }
 }
