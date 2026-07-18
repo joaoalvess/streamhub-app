@@ -13,7 +13,7 @@ struct MetadataAPI: Sendable {
 
     let session: URLSession
 
-    init(session: URLSession = .shared) { self.session = session }
+    nonisolated init(session: URLSession = .shared) { self.session = session }
 
     func manifest(tag: String? = nil) async throws -> AddonManifest {
         var path = "manifest.json"
@@ -26,6 +26,10 @@ struct MetadataAPI: Sendable {
         if skip > 0 { path += "/skip=\(skip)" }
         path += ".json"
         return try await get(CatalogResponse.self, at: path).metas
+    }
+
+    func meta(type: String, id: String) async throws -> MetaDetail? {
+        try await get(MetaResponse.self, at: "meta/\(type)/\(id).json").meta
     }
 
     private func get<T: Decodable>(_ type: T.Type, at path: String) async throws -> T {
