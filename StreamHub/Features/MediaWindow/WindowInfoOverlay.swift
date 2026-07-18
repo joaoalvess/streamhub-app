@@ -7,6 +7,9 @@ enum WindowFocus: Hashable {
     case mode
     case add
     case info
+    case season(Int)
+    case episode(Int)
+    case special(Int)
 }
 
 /// Camada fixa sobre o backdrop central: logo, tipo·gênero, sinopse, linha de
@@ -19,6 +22,7 @@ struct WindowInfoOverlay: View {
     var focus: FocusState<WindowFocus?>.Binding
     var playLabel: String = "Reproduzir"
     var isPlayLoading = false
+    var isPlayEnabled = true
     var showsModeSelector = false
     var playbackMode: PlaybackMode = .dubbed
     var onPlay: () -> Void = {}
@@ -26,6 +30,8 @@ struct WindowInfoOverlay: View {
     var onAdd: () -> Void = {}
     var onInfo: () -> Void = {}
     var onShowDetails: () -> Void = {}
+
+    @State private var loadingFill: CGFloat = 0
 
     private let horizontalInset: CGFloat = 64
     private let bottomInset: CGFloat = 106
@@ -125,17 +131,42 @@ struct WindowInfoOverlay: View {
         HStack(spacing: 24) {
             Button(action: onPlay) {
                 HStack(spacing: 10) {
-                    if isPlayLoading {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "play.fill")
-                    }
+                    Image(systemName: "play.fill")
+                        .opacity(isPlayLoading ? 0 : 1)
+                        .overlay {
+                            if isPlayLoading {
+                                ProgressView()
+                                    .tint(Theme.textPrimary)
+                                    .scaleEffect(0.55)
+                            }
+                        }
                     Text(playLabel)
                 }
             }
-            .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: focus.wrappedValue == .play))
+            .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: focus.wrappedValue == .play && !isPlayLoading))
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(Theme.fill.opacity(0.3))
+                        .frame(width: max(0, geo.size.width * loadingFill))
+                }
+                .clipShape(Capsule())
+                .allowsHitTesting(false)
+            }
             .focused(focus, equals: .play)
-            .disabled(isPlayLoading)
+            .disabled(isPlayLoading || !isPlayEnabled)
+            .onChange(of: isPlayLoading) { _, loading in
+                if loading {
+                    loadingFill = 0
+                    withAnimation(.easeOut(duration: 3.2)) { loadingFill = 0.85 }
+                } else if loadingFill > 0 {
+                    withAnimation(.easeOut(duration: 0.22)) { loadingFill = 1 }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(400))
+                        loadingFill = 0
+                    }
+                }
+            }
 
             if showsModeSelector {
                 Button(action: onCycleMode) {

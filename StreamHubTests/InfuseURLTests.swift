@@ -128,6 +128,68 @@ struct InfuseURLTests {
         #expect(try value("filename", in: url) == filename)
     }
 
+    private func episode(season: Int, number: Int) -> EpisodeItem {
+        EpisodeItem(
+            videoId: "tt5753856:\(season):\(number)",
+            season: season,
+            episode: number,
+            title: "Episódio \(number)",
+            overview: nil,
+            thumbnailURL: nil,
+            releasedAt: nil,
+            runtimeMinutes: 60,
+            isReleased: true
+        )
+    }
+
+    private func seriesItem(title: String) -> MediaItem {
+        MediaItem(
+            contentId: "tt5753856",
+            imdbId: "tt5753856",
+            title: title,
+            kind: .series,
+            genres: [],
+            posterURL: nil,
+            backdropURL: nil,
+            synopsis: "",
+            year: 2017
+        )
+    }
+
+    @Test func episodeFilenameUsesSeasonEpisodeCodeWithZeroPadding() {
+        let filename = PlaybackCoordinator.infuseFilename(
+            item: seriesItem(title: "Dark"),
+            episode: episode(season: 3, number: 8),
+            filename: "Dark.S03E08.1080p.mkv"
+        )
+        #expect(filename == "Dark S03E08.mkv")
+    }
+
+    @Test func episodeFilenamePreservesKnownExtension() {
+        let filename = PlaybackCoordinator.infuseFilename(
+            item: seriesItem(title: "Dark"),
+            episode: episode(season: 1, number: 1),
+            filename: "dark.s01e01.mp4"
+        )
+        #expect(filename == "Dark S01E01.mp4")
+    }
+
+    @Test func episodeFilenameNormalizesUnknownExtensionToMkv() {
+        let filename = PlaybackCoordinator.infuseFilename(
+            item: seriesItem(title: "Dark"),
+            episode: episode(season: 2, number: 10),
+            filename: "dark.s02e10.strm"
+        )
+        #expect(filename == "Dark S02E10.mkv")
+
+        let missing = PlaybackCoordinator.infuseFilename(
+            item: seriesItem(title: "Dark"),
+            episode: episode(season: 2, number: 10),
+            filename: nil
+        )
+        #expect(missing == "Dark S02E10.mkv")
+    }
+
     @Test func fullyEncodesCallbackURLs() throws {
         let video = try #require(URL(string: "https://cdn.example/file.mkv"))
         let item = InfusePlayItem(videoURL: video, filename: nil, positionSeconds: nil)

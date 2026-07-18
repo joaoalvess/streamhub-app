@@ -33,6 +33,7 @@ struct ContinueWatchingRowView: View {
                 .padding(.trailing, Theme.Metrics.edgeH)
                 .padding(.vertical, Theme.Metrics.focusHeadroom)
             }
+            .scrollClipDisabled()
             .focusSection()
         }
     }
@@ -47,21 +48,27 @@ struct ContinueWatchingRowView: View {
 nonisolated extension MediaItem {
     init(entry: ResumeEntry) {
         let service = entry.serviceCode.flatMap(StreamingService.init(rawValue:))
+        let episodeLabel: String?
+        if let code = entry.episodeCode {
+            episodeLabel = [code, entry.remainingLabel].compactMap { $0 }.joined(separator: " · ")
+        } else {
+            episodeLabel = entry.remainingLabel
+        }
         self.init(
-            contentId: entry.contentId,
+            contentId: entry.metaId ?? entry.contentId,
             imdbId: entry.imdbId,
             title: entry.title,
-            kind: .movie,
-            genres: [],
+            kind: MediaItem.Kind(rawValue: entry.mediaKind ?? "movie") ?? .movie,
+            genres: entry.genres ?? [],
             posterURL: entry.posterURL,
             backdropURL: entry.backdropURL,
             logoURL: entry.logoURL,
-            synopsis: "",
+            synopsis: entry.synopsis ?? "",
             year: entry.year,
             serviceBadge: service?.badgeLabel,
             streamingSource: service,
             progress: entry.progress ?? 0.05,
-            episodeLabel: entry.remainingLabel,
+            episodeLabel: episodeLabel,
             runtime: entry.runtimeMinutes.map { "\($0) min" }
         )
     }
