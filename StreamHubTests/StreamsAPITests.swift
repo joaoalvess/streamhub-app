@@ -72,7 +72,7 @@ struct StreamsAPITests {
         ]}
         """.utf8)
         let response = try JSONDecoder().decode(StreamsResponse.self, from: json)
-        let chosen = try #require(response.streams.first(where: \.isPlayable))
+        let chosen = try #require(response.streams.first { $0.isPlayable })
         #expect(chosen.playbackURL?.absoluteString == "https://cdn.example/primeiro.mkv")
     }
 

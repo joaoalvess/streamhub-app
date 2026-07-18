@@ -65,5 +65,15 @@ nonisolated enum StreamingService: String, CaseIterable, Hashable {
         return schemes.compactMap(URL.init(string:))
     }
 
-    func titleDeepLink(imdbId: String?, tmdbId: String?) -> URL? { nil }
+    var watchHubNames: [String] {
+        switch self {
+        case .netflix: ["Netflix"]
+        case .disneyPlus: ["Disney Plus"]
+        case .hboMax: ["HBO Max", "HBO Max Amazon Channel"]
+        case .primeVideo: ["Amazon Prime Video", "Amazon Video"]
+        case .appleTVPlus: ["Apple TV Plus", "Apple TV+"]
+        case .globoplay: ["Globoplay"]
+        default: []
+        }
+    }
 }
