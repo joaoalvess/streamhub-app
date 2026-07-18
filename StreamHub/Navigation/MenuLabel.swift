@@ -19,7 +19,7 @@ struct MenuLabel: View {
 
 struct ChannelBadge: View {
     let asset: String
-    var size: CGFloat = 30
+    var size: CGFloat = 26
 
     var body: some View {
         Image(asset)

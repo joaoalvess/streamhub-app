@@ -9,7 +9,7 @@ struct Top10CardView: View {
         Button(action: onSelect) {
             PosterCard(item: item, rank: rank)
         }
-        .buttonStyle(.card)
+        .buttonStyle(.borderless)
     }
 }
 

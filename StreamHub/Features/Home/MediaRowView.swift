@@ -22,6 +22,7 @@ struct MediaRowView: View {
                 .padding(.trailing, Theme.Metrics.edgeH)
                 .padding(.vertical, Theme.Metrics.focusHeadroom)
             }
+            .scrollClipDisabled()
             .focusSection()
         }
     }

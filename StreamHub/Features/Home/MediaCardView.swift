@@ -8,13 +8,13 @@ struct MediaCardView: View {
         Button(action: onSelect) {
             PosterCard(item: item)
         }
-        .buttonStyle(.card)
+        .buttonStyle(.borderless)
     }
 }
 
 /// Card de pôster base, no tamanho único da Home. Reutilizado pelo Top 10
-/// (passando `rank`). Mostra um sombreado na base do card com o gênero, e a
-/// borda translúcida "liquid glass" quando focado.
+/// (passando `rank`). Mostra um sombreado na base do card com o gênero quando
+/// focado; o realce de foco é o lockup padrão do sistema (lift + liquid glass).
 struct PosterCard: View {
     let item: MediaItem
     var rank: Int? = nil
@@ -28,7 +28,7 @@ struct PosterCard: View {
             .animation(.easeInOut(duration: 0.2), value: isFocused)
             .overlay(alignment: .topLeading) { rankNumeral }
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
-            .liquidGlassFocusBorder(isFocused)
+            .hoverEffect(.highlight)
     }
 
     private var poster: some View {
@@ -108,7 +108,7 @@ struct PosterCard: View {
                 rank: 1
             )
         }
-        .buttonStyle(.card)
+        .buttonStyle(.borderless)
     }
     .padding(Theme.Metrics.focusHeadroom)
     .background(Theme.bg)
