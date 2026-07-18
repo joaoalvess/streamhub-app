@@ -13,6 +13,8 @@ struct MediaWindowView: View {
     @State private var centerIndex: Int
     @State private var isFullscreen = false
     @State private var showsInfo = false
+    @State private var showsSources = false
+    @State private var sourcesTarget: PlayTarget?
     @State private var loaded: Loaded?
     @State private var playbackMode: PlaybackMode = .dubbed
     @State private var seriesModel = SeriesDetailViewModel()
@@ -63,19 +65,28 @@ struct MediaWindowView: View {
 
                         episodePages(for: loaded, size: geo.size)
                             .allowsHitTesting(isFullscreen)
-                            .disabled(showsInfo)
+                            .disabled(showsInfo || showsSources)
                             .transition(.opacity.combined(with: .offset(y: 16)))
                     } else {
                         overlayView(for: loaded)
                             .frame(width: isFullscreen ? geo.size.width : geo.size.width * 0.9)
                             .allowsHitTesting(isFullscreen)
-                            .disabled(showsInfo)
+                            .disabled(showsInfo || showsSources)
                             .transition(.opacity.combined(with: .offset(y: 16)))
                     }
 
                     if showsInfo {
                         InfoModalView(item: loaded.item)
                             .transition(.scale(scale: 0.96).combined(with: .opacity))
+                    }
+
+                    if showsSources, let target = sourcesTarget {
+                        SourcesModalView(
+                            mode: playbackMode,
+                            loadSources: { await loadSources(for: target, item: loaded.item) },
+                            onSelect: { selectSource($0, item: loaded.item) }
+                        )
+                        .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
                 }
             }
@@ -122,7 +133,11 @@ struct MediaWindowView: View {
             showsModeSelector: showsModeSelector(for: loaded.item),
             playbackMode: playbackMode,
             onPlay: { play(loaded.item) },
-            onCycleMode: { playbackMode = playbackMode.next },
+            onCycleMode: {
+                guard !showsSources else { return }
+                playbackMode = playbackMode.next
+            },
+            onHoldMode: { holdMode(loaded.item) },
             onShowDetails: showDetails
         )
     }
@@ -293,24 +308,13 @@ struct MediaWindowView: View {
 
     private func play(_ item: MediaItem) {
         guard let coordinator else { return }
-        guard isSeriesLike(item) else {
-            Task { await coordinator.play(item: item, mode: playbackMode) }
-            return
-        }
-        switch seriesModel.phase {
-        case .loaded:
-            if let next = seriesModel.nextEpisode(store: coordinator.progressStore, seriesId: seriesId(for: item)) {
-                playEpisode(next, item: item)
-            } else if item.kind == .series, !item.isAnime {
-                playFallback(item, coordinator: coordinator)
-            } else {
-                coordinator.fail(.noEpisodes)
-            }
-        case .unavailable:
-            playFallback(item, coordinator: coordinator)
-        case .idle, .loading, .failed:
-            guard let episode = episodeFromEntry(for: item) else { return }
-            Task { await coordinator.play(item: item, episode: episode, next: nil, mode: playbackMode) }
+        switch resolvePlayTarget(for: item) {
+        case .target(let target):
+            start(target, item: item, coordinator: coordinator, preferredStream: nil)
+        case .blocked(let error):
+            coordinator.fail(error)
+        case .pending:
+            break
         }
     }
 
@@ -320,14 +324,53 @@ struct MediaWindowView: View {
         Task { await coordinator.play(item: item, episode: episode, next: next, mode: playbackMode) }
     }
 
-    private func playFallback(_ item: MediaItem, coordinator: PlaybackCoordinator) {
-        guard item.kind == .series, !item.isAnime else {
-            Task { await coordinator.play(item: item, mode: playbackMode) }
-            return
+    private func start(
+        _ target: PlayTarget,
+        item: MediaItem,
+        coordinator: PlaybackCoordinator,
+        preferredStream: AddonStream?
+    ) {
+        switch target {
+        case .movie:
+            Task { await coordinator.play(item: item, mode: playbackMode, preferredStream: preferredStream) }
+        case .episode(let episode, let next):
+            Task {
+                await coordinator.play(
+                    item: item,
+                    episode: episode,
+                    next: next,
+                    mode: playbackMode,
+                    preferredStream: preferredStream
+                )
+            }
         }
+    }
+
+    private func resolvePlayTarget(for item: MediaItem) -> PlayResolution {
+        guard isSeriesLike(item) else { return .target(.movie) }
+        switch seriesModel.phase {
+        case .loaded:
+            if let next = seriesModel.nextEpisode(store: coordinator?.progressStore, seriesId: seriesId(for: item)) {
+                return .target(.episode(next, next: seriesModel.episodeAfter(next)))
+            }
+            if item.kind == .series, !item.isAnime {
+                return fallbackTarget(for: item)
+            }
+            return .blocked(.noEpisodes)
+        case .unavailable:
+            if item.kind == .series, !item.isAnime {
+                return fallbackTarget(for: item)
+            }
+            return .target(.movie)
+        case .idle, .loading, .failed:
+            guard let episode = episodeFromEntry(for: item) else { return .pending }
+            return .target(.episode(episode, next: nil))
+        }
+    }
+
+    private func fallbackTarget(for item: MediaItem) -> PlayResolution {
         guard let defaultId = seriesModel.detail?.behaviorHints?.defaultVideoId else {
-            coordinator.fail(.noEpisodes)
-            return
+            return .blocked(.noEpisodes)
         }
         let episode = EpisodeItem(
             videoId: defaultId,
@@ -340,7 +383,35 @@ struct MediaWindowView: View {
             runtimeMinutes: RuntimeParser.minutes(from: item.runtime),
             isReleased: true
         )
-        Task { await coordinator.play(item: item, episode: episode, next: nil, mode: playbackMode) }
+        return .target(.episode(episode, next: nil))
+    }
+
+    private func holdMode(_ item: MediaItem) {
+        guard playbackMode.isAvailable, !isPlayLoading, !showsSources else { return }
+        guard case .target(let target) = resolvePlayTarget(for: item) else { return }
+        sourcesTarget = target
+        withAnimation(.easeOut(duration: 0.3)) { showsSources = true }
+    }
+
+    private func loadSources(
+        for target: PlayTarget,
+        item: MediaItem
+    ) async -> Result<[AddonStream], PlaybackCoordinator.PlaybackError> {
+        guard let coordinator else { return .failure(.notConfigured) }
+        switch target {
+        case .movie:
+            return await coordinator.sources(for: item, mode: playbackMode)
+        case .episode(let episode, _):
+            return await coordinator.sources(videoId: episode.videoId, isAnime: item.isAnime, mode: playbackMode)
+        }
+    }
+
+    private func selectSource(_ stream: AddonStream, item: MediaItem) {
+        withAnimation(.easeOut(duration: 0.3)) { showsSources = false }
+        focus = .mode
+        guard let coordinator, let target = sourcesTarget else { return }
+        sourcesTarget = nil
+        start(target, item: item, coordinator: coordinator, preferredStream: stream)
     }
 
     private func enterFullscreen() {
@@ -354,7 +425,11 @@ struct MediaWindowView: View {
     }
 
     private func handleBack() {
-        if showsInfo {
+        if showsSources {
+            withAnimation(.easeOut(duration: 0.3)) { showsSources = false }
+            sourcesTarget = nil
+            focus = .mode
+        } else if showsInfo {
             withAnimation(.easeOut(duration: 0.3)) { showsInfo = false }
             focus = .details
         } else if isFullscreen, isEpisodesFocus {
@@ -449,6 +524,17 @@ private struct Loaded {
     let item: MediaItem
     let backdrop: Image?
     let logo: Image?
+}
+
+private enum PlayTarget {
+    case movie
+    case episode(EpisodeItem, next: EpisodeItem?)
+}
+
+private enum PlayResolution {
+    case target(PlayTarget)
+    case blocked(PlaybackCoordinator.PlaybackError)
+    case pending
 }
 
 private enum WindowAssetLoader {

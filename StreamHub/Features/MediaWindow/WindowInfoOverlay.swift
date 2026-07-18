@@ -27,6 +27,7 @@ struct WindowInfoOverlay: View {
     var playbackMode: PlaybackMode = .dubbed
     var onPlay: () -> Void = {}
     var onCycleMode: () -> Void = {}
+    var onHoldMode: () -> Void = {}
     var onAdd: () -> Void = {}
     var onInfo: () -> Void = {}
     var onShowDetails: () -> Void = {}
@@ -170,10 +171,12 @@ struct WindowInfoOverlay: View {
 
             if showsModeSelector {
                 Button(action: onCycleMode) {
-                    Text(playbackMode.label)
-                        .frame(minWidth: 72)
+                    Image(systemName: playbackMode.icon)
                 }
-                .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: focus.wrappedValue == .mode))
+                .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .mode))
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.7).onEnded { _ in onHoldMode() }
+                )
                 .focused(focus, equals: .mode)
                 .disabled(isPlayLoading)
             }

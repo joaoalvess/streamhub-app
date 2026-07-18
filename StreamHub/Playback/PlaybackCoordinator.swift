@@ -12,7 +12,7 @@ final class PlaybackCoordinator {
         case externalService(StreamingService)
     }
 
-    enum PlaybackError: Equatable {
+    enum PlaybackError: Error, Equatable {
         case missingImdbId
         case notConfigured
         case noSources
@@ -80,19 +80,45 @@ final class PlaybackCoordinator {
         return .infuse
     }
 
-    func play(item: MediaItem, mode: PlaybackMode) async {
+    func play(item: MediaItem, mode: PlaybackMode, preferredStream: AddonStream? = nil) async {
         guard state != .loading, item.kind == .movie || item.isAnime else { return }
         switch route(for: item) {
         case .externalService(let service):
             await openExternal(service, item: item)
         case .infuse:
-            await playViaInfuse(item: item, mode: mode)
+            await playViaInfuse(item: item, mode: mode, preferredStream: preferredStream)
         }
     }
 
-    func play(item: MediaItem, episode: EpisodeItem, next: EpisodeItem?, mode: PlaybackMode) async {
+    func play(
+        item: MediaItem,
+        episode: EpisodeItem,
+        next: EpisodeItem?,
+        mode: PlaybackMode,
+        preferredStream: AddonStream? = nil
+    ) async {
         guard state != .loading else { return }
-        await playEpisodeViaInfuse(item: item, episode: episode, next: next, mode: mode)
+        await playEpisodeViaInfuse(item: item, episode: episode, next: next, mode: mode, preferredStream: preferredStream)
+    }
+
+    func sources(for item: MediaItem, mode: PlaybackMode) async -> Result<[AddonStream], PlaybackError> {
+        switch Self.streamQuery(for: item, mode: mode) {
+        case .failure(let error):
+            return .failure(error)
+        case .success(let query):
+            return await loadStreams(profile: query.profile, type: query.type, id: query.id)
+                .map { $0.filter(\.isPlayable) }
+        }
+    }
+
+    func sources(videoId: String, isAnime: Bool, mode: PlaybackMode) async -> Result<[AddonStream], PlaybackError> {
+        switch Self.streamQuery(videoId: videoId, isAnime: isAnime, mode: mode) {
+        case .failure(let error):
+            return .failure(error)
+        case .success(let query):
+            return await loadStreams(profile: query.profile, type: query.type, id: videoId)
+                .map { $0.filter(\.isPlayable) }
+        }
     }
 
     func fail(_ error: PlaybackError) {
@@ -157,43 +183,25 @@ final class PlaybackCoordinator {
         return candidates
     }
 
-    private func playViaInfuse(item: MediaItem, mode: PlaybackMode) async {
-        let profile: StreamProfile
-        let type: String
-        let id: String
-        if item.isAnime {
-            guard let animeId = Self.animeStreamId(for: item) else {
-                state = .failed(.missingImdbId)
-                return
-            }
-            profile = .anime
-            type = "anime"
-            id = animeId
-        } else {
-            guard let modeProfile = StreamProfile(mode: mode) else {
-                state = .failed(.enhancedUnavailable)
-                return
-            }
-            guard let imdbId = Self.imdbId(for: item) else {
-                state = .failed(.missingImdbId)
-                return
-            }
-            profile = modeProfile
-            type = "movie"
-            id = imdbId
+    private func playViaInfuse(item: MediaItem, mode: PlaybackMode, preferredStream: AddonStream?) async {
+        let query: (profile: StreamProfile, type: String, id: String)
+        switch Self.streamQuery(for: item, mode: mode) {
+        case .failure(let error):
+            state = .failed(error)
+            return
+        case .success(let resolved):
+            query = resolved
         }
         state = .loading
         let streams: [AddonStream]
-        do {
-            streams = try await fetchStreams(profile: profile, type: type, id: id)
-        } catch let error as StreamsAPIError {
-            state = .failed(Self.playbackError(for: error))
+        switch await loadStreams(profile: query.profile, type: query.type, id: query.id) {
+        case .failure(let error):
+            state = .failed(error)
             return
-        } catch {
-            state = .failed(.network)
-            return
+        case .success(let fetched):
+            streams = fetched
         }
-        guard let chosen = streams.first(where: \.isPlayable),
+        guard let chosen = preferredStream ?? streams.first(where: \.isPlayable),
               let videoURL = chosen.playbackURL else {
             state = .failed(.noSources)
             return
@@ -202,7 +210,7 @@ final class PlaybackCoordinator {
             state = .failed(.infuseNotInstalled)
             return
         }
-        let contentId = item.contentId ?? id
+        let contentId = item.contentId ?? query.id
         let runtimeMinutes = RuntimeParser.minutes(from: item.runtime)
         let playItem = InfusePlayItem(
             videoURL: videoURL,
@@ -235,30 +243,27 @@ final class PlaybackCoordinator {
         item: MediaItem,
         episode: EpisodeItem,
         next: EpisodeItem?,
-        mode: PlaybackMode
+        mode: PlaybackMode,
+        preferredStream: AddonStream?
     ) async {
-        let request = Self.streamRequest(videoId: episode.videoId, isAnime: item.isAnime)
-        let profile: StreamProfile
-        if let fixed = request.profile {
-            profile = fixed
-        } else if let modeProfile = StreamProfile(mode: mode) {
-            profile = modeProfile
-        } else {
-            state = .failed(.enhancedUnavailable)
+        let query: (profile: StreamProfile, type: String)
+        switch Self.streamQuery(videoId: episode.videoId, isAnime: item.isAnime, mode: mode) {
+        case .failure(let error):
+            state = .failed(error)
             return
+        case .success(let resolved):
+            query = resolved
         }
         state = .loading
         let streams: [AddonStream]
-        do {
-            streams = try await fetchStreams(profile: profile, type: request.type, id: episode.videoId)
-        } catch let error as StreamsAPIError {
-            state = .failed(Self.playbackError(for: error))
+        switch await loadStreams(profile: query.profile, type: query.type, id: episode.videoId) {
+        case .failure(let error):
+            state = .failed(error)
             return
-        } catch {
-            state = .failed(.network)
-            return
+        case .success(let fetched):
+            streams = fetched
         }
-        guard let chosen = streams.first(where: \.isPlayable),
+        guard let chosen = preferredStream ?? streams.first(where: \.isPlayable),
               let videoURL = chosen.playbackURL else {
             state = .failed(.noSources)
             return
@@ -310,6 +315,16 @@ final class PlaybackCoordinator {
         }
     }
 
+    private func loadStreams(profile: StreamProfile, type: String, id: String) async -> Result<[AddonStream], PlaybackError> {
+        do {
+            return .success(try await fetchStreams(profile: profile, type: type, id: id))
+        } catch let error as StreamsAPIError {
+            return .failure(Self.playbackError(for: error))
+        } catch {
+            return .failure(.network)
+        }
+    }
+
     private func fetchStreams(profile: StreamProfile, type: String, id: String) async throws -> [AddonStream] {
         let key = "\(profile.rawValue)|\(type)|\(id)"
         if let cached = cache[key], Date().timeIntervalSince(cached.fetchedAt) < Self.cacheTTL {
@@ -345,6 +360,32 @@ final class PlaybackCoordinator {
             return nil
         }
         return entry.positionSeconds
+    }
+
+    private static func streamQuery(
+        for item: MediaItem,
+        mode: PlaybackMode
+    ) -> Result<(profile: StreamProfile, type: String, id: String), PlaybackError> {
+        if item.isAnime {
+            guard let animeId = animeStreamId(for: item) else { return .failure(.missingImdbId) }
+            return .success((.anime, "anime", animeId))
+        }
+        guard let profile = StreamProfile(mode: mode) else { return .failure(.enhancedUnavailable) }
+        guard let imdbId = imdbId(for: item) else { return .failure(.missingImdbId) }
+        return .success((profile, "movie", imdbId))
+    }
+
+    private static func streamQuery(
+        videoId: String,
+        isAnime: Bool,
+        mode: PlaybackMode
+    ) -> Result<(profile: StreamProfile, type: String), PlaybackError> {
+        let request = streamRequest(videoId: videoId, isAnime: isAnime)
+        if let fixed = request.profile {
+            return .success((fixed, request.type))
+        }
+        guard let profile = StreamProfile(mode: mode) else { return .failure(.enhancedUnavailable) }
+        return .success((profile, request.type))
     }
 
     nonisolated static func streamRequest(videoId: String, isAnime: Bool) -> (type: String, profile: StreamProfile?) {

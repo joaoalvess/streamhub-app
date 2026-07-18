@@ -13,6 +13,14 @@ nonisolated enum PlaybackMode: String, CaseIterable, Hashable {
         }
     }
 
+    var icon: String {
+        switch self {
+        case .dubbed: "sofa.fill"
+        case .subtitled: "4k.tv.fill"
+        case .enhanced: "sparkles"
+        }
+    }
+
     var next: PlaybackMode {
         let all = Self.allCases
         guard let index = all.firstIndex(of: self) else { return .dubbed }
