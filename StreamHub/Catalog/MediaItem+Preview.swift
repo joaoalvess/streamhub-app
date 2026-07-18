@@ -11,20 +11,25 @@ nonisolated extension MediaItem.Person {
 }
 
 nonisolated extension MediaItem {
-    init(preview: MetaPreview, catalogType: String? = nil, catalogId: String? = nil) {
+    init(
+        preview: MetaPreview,
+        catalogType: String? = nil,
+        catalogId: String? = nil,
+        service: StreamingService? = nil
+    ) {
         let directors: [Person]
         if let structured = preview.appExtras?.directors, !structured.isEmpty {
             directors = structured.map(Person.init(credit:))
         } else {
             directors = Self.people(fromCSV: preview.director)
         }
-        let streamingSource = catalogId.flatMap(StreamingService.init(catalogId:))
+        let streamingSource = service ?? catalogId.flatMap(StreamingService.init(catalogId:))
 
         self.init(
             contentId: preview.id,
             imdbId: preview.imdbId ?? (preview.id.hasPrefix("tt") ? preview.id : nil),
             title: preview.name,
-            kind: MediaItem.Kind(rawValue: catalogType ?? preview.type) ?? .movie,
+            kind: MediaItem.Kind(rawValue: catalogType ?? "") ?? MediaItem.Kind(rawValue: preview.type) ?? .movie,
             genres: preview.genres ?? [],
             posterURL: preview.poster
                 .map { $0.replacingOccurrences(of: "w600_and_h900_bestv2", with: "w500") }

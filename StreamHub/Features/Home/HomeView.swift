@@ -7,11 +7,11 @@ struct HomeView: View {
     @State private var heroTint: Color = Theme.bg
     @Environment(PlaybackProgressStore.self) private var progressStore: PlaybackProgressStore?
 
-    private let tag: String
+    private let config: HomeConfiguration
 
-    init(tag: String = "movie", heroCatalogId: String = "trakt.popular.movies") {
-        self.tag = tag
-        _viewModel = State(initialValue: HomeViewModel(tag: tag, heroCatalogId: heroCatalogId))
+    init(config: HomeConfiguration) {
+        self.config = config
+        _viewModel = State(initialValue: HomeViewModel(config: config))
     }
 
     private enum ScrollAnchor: Hashable { case top }
@@ -53,7 +53,7 @@ struct HomeView: View {
                         .padding(.bottom, -Theme.Metrics.heroOverlap)
                         .zIndex(0)
 
-                    if tag == "movie", let progressStore, !progressStore.entries.isEmpty {
+                    if config.showsContinueWatching, let progressStore, !progressStore.entries.isEmpty {
                         ContinueWatchingRowView(entries: progressStore.entries)
                             .zIndex(1)
                     }
@@ -75,7 +75,7 @@ struct HomeView: View {
 
     private var failureView: some View {
         VStack(spacing: 24) {
-            Text("Não foi possível carregar os filmes.")
+            Text("Não foi possível carregar o conteúdo.")
                 .font(Theme.Font.sectionTitle)
                 .foregroundStyle(Theme.textPrimary)
             Button("Tentar novamente") {
@@ -86,6 +86,6 @@ struct HomeView: View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(config: .filmes)
         .preferredColorScheme(.dark)
 }

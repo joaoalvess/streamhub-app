@@ -24,20 +24,16 @@ struct RootView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .tabViewSidebarHeader { SidebarProfileHeader() }
         .preferredColorScheme(.dark)
         .background(Theme.bg)
     }
 
     @ViewBuilder
     private func destination(for section: MenuSection) -> some View {
-        switch section {
-        case .filmes:
-            HomeView(tag: "movie", heroCatalogId: "mdblist.2236")
-        case .series:
-            HomeView(tag: "series", heroCatalogId: "tmdb.trending_series")
-        case .animes:
-            HomeView(tag: "anime", heroCatalogId: "mal.season_top_anime")
-        default:
+        if let config = section.homeConfiguration {
+            HomeView(config: config)
+        } else {
             ComingSoonView(title: section.title, icon: section.icon)
         }
     }
@@ -45,4 +41,5 @@ struct RootView: View {
 
 #Preview {
     RootView()
+        .environment(ProfileStore())
 }

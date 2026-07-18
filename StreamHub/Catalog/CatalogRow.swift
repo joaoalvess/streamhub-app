@@ -16,6 +16,7 @@ final class CatalogRow: Identifiable {
     private let api: MetadataAPI
     private let type: String
     private let catalogId: String
+    private let service: StreamingService?
 
     private var loaded: [MediaItem]
     private var revealed: Int
@@ -25,11 +26,15 @@ final class CatalogRow: Identifiable {
     private var isFetching = false
 
     init(api: MetadataAPI, type: String, id: String,
-         title: String, style: MediaRow.Style, firstPage: [MetaPreview]) {
-        let items = firstPage.map { MediaItem(preview: $0, catalogType: type, catalogId: id) }
+         title: String, style: MediaRow.Style, firstPage: [MetaPreview],
+         service: StreamingService? = nil) {
+        let items = firstPage.map {
+            MediaItem(preview: $0, catalogType: type, catalogId: id, service: service)
+        }
         self.api = api
         self.type = type
         self.catalogId = id
+        self.service = service
         self.title = title
         self.style = style
         self.loaded = items
@@ -42,6 +47,7 @@ final class CatalogRow: Identifiable {
         self.api = MetadataAPI()
         self.type = ""
         self.catalogId = ""
+        self.service = nil
         self.title = title
         self.style = style
         self.loaded = items
@@ -93,7 +99,9 @@ final class CatalogRow: Identifiable {
         if page.isEmpty {
             reachedEnd = true
         } else {
-            loaded.append(contentsOf: page.map { MediaItem(preview: $0, catalogType: type, catalogId: catalogId) })
+            loaded.append(contentsOf: page.map {
+                MediaItem(preview: $0, catalogType: type, catalogId: catalogId, service: service)
+            })
             skip += page.count
         }
         isFetching = false

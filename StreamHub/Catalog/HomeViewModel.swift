@@ -5,20 +5,18 @@ import Observation
 final class HomeViewModel {
     enum Phase: Sendable { case idle, loading, loaded, failed }
 
+    private nonisolated static let heroLimit = 7
+
     private let api: MetadataAPI
-    private let tag: String
-    private let heroCatalogId: String
+    private let config: HomeConfiguration
     private let maxConcurrent = 5
 
     private(set) var phase: Phase = .idle
     private(set) var rows: [CatalogRow] = []
     private(set) var heroItems: [MediaItem] = []
 
-    init(tag: String = "movie",
-         heroCatalogId: String = "trakt.popular.movies",
-         api: MetadataAPI = MetadataAPI()) {
-        self.tag = tag
-        self.heroCatalogId = heroCatalogId
+    init(config: HomeConfiguration, api: MetadataAPI = MetadataAPI()) {
+        self.config = config
         self.api = api
     }
 
@@ -26,17 +24,16 @@ final class HomeViewModel {
         guard phase == .idle || phase == .failed else { return }
         phase = .loading
         do {
-            let manifest = try await api.manifest(tag: tag)
-            let defs = manifest.catalogs.filter { $0.type == tag && !$0.hasRequiredExtra }
+            let manifest = try await api.manifest(tag: config.tag)
+            let defs = manifest.catalogs.filter { config.includes($0) }
             let pages = try await fetchPages(defs)
             guard !Task.isCancelled else { return }
             rows = pages.map {
                 CatalogRow(api: api, type: $0.def.type, id: $0.def.id,
-                           title: $0.def.name, style: style(for: $0.def.name), firstPage: $0.metas)
+                           title: config.rowTitle(for: $0.def), style: Self.style(for: $0.def),
+                           firstPage: $0.metas, service: config.service)
             }
-            let heroMetas = pages.first { $0.def.id == heroCatalogId }?.metas ?? pages.flatMap(\.metas)
-            let heroPool = heroMetas.map { MediaItem(preview: $0) }
-            heroItems = Array(heroPool.filter { $0.backdropURL != nil && $0.logoURL != nil }.prefix(7))
+            heroItems = Self.heroPool(pages: pages, config: config)
             phase = rows.isEmpty ? .failed : .loaded
         } catch is CancellationError {
             return
@@ -46,8 +43,34 @@ final class HomeViewModel {
         }
     }
 
-    private func style(for catalogName: String) -> MediaRow.Style {
-        catalogName.lowercased().starts(with: "top 10") ? .top10 : .standard
+    nonisolated static func style(for def: CatalogDefinition) -> MediaRow.Style {
+        if def.id.hasPrefix("flixpatrol.") { return .top10 }
+        return def.name.lowercased().starts(with: "top 10") ? .top10 : .standard
+    }
+
+    nonisolated static func heroPool(
+        pages: [(def: CatalogDefinition, metas: [MetaPreview])],
+        config: HomeConfiguration
+    ) -> [MediaItem] {
+        let ordered = pages.filter { $0.def.id == config.heroCatalogId }
+            + pages.filter { $0.def.id != config.heroCatalogId }
+        var seen: Set<String> = []
+        var pool: [MediaItem] = []
+        for page in ordered {
+            for meta in page.metas {
+                if pool.count == Self.heroLimit { return pool }
+                let item = MediaItem(
+                    preview: meta,
+                    catalogType: page.def.type,
+                    catalogId: page.def.id,
+                    service: config.service
+                )
+                guard item.backdropURL != nil, item.logoURL != nil else { continue }
+                if let contentId = item.contentId, !seen.insert(contentId).inserted { continue }
+                pool.append(item)
+            }
+        }
+        return pool
     }
 
     private func fetchPages(_ defs: [CatalogDefinition]) async throws
