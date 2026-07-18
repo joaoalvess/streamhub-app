@@ -14,10 +14,13 @@ enum Theme {
 
     enum Font {
         static let sectionTitle = SwiftUI.Font.system(size: 30, weight: .semibold)
+        static let screenTitle = SwiftUI.Font.system(size: 52, weight: .semibold)
         static let heroTitle = SwiftUI.Font.system(size: 80, weight: .heavy)
         static let cardTitle = SwiftUI.Font.system(size: 26, weight: .semibold)
         static let meta = SwiftUI.Font.system(size: 24, weight: .regular)
         static let badge = SwiftUI.Font.system(size: 18, weight: .semibold)
+        static let profileEyebrow = SwiftUI.Font.system(size: 24, weight: .semibold)
+        static let profileName = SwiftUI.Font.system(size: 72, weight: .bold)
     }
 
     enum Metrics {
@@ -39,6 +42,9 @@ enum Theme {
         static let posterWidth: CGFloat = 268      // 2:3
         static let wideCardWidth: CGFloat = 380
         static let wideCardHeight: CGFloat = 214   // 16:9
+        static let episodeCardWidth: CGFloat = 420
+        static let episodeCardHeight: CGFloat = 236 // 16:9
+        static let profileCircle: CGFloat = 180
     }
 
     static let heroGradientVertical = LinearGradient(
@@ -71,6 +77,47 @@ enum Theme {
         colors: [.black.opacity(0.85), .clear],
         startPoint: .bottom,
         endPoint: UnitPoint(x: 0.5, y: 0.5)
+    )
+
+    static let wallpaperScrim = LinearGradient(
+        stops: [
+            .init(color: .black.opacity(0.45), location: 0.0),
+            .init(color: .black.opacity(0.2), location: 0.45),
+            .init(color: .black.opacity(0.55), location: 1.0)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    // Scrim cinematográfico para a experiência de perfis (mais forte que o wallpaper,
+    // legível mesmo sobre covers claros como céu/flores).
+    static let profileScrim = LinearGradient(
+        stops: [
+            .init(color: .black.opacity(0.55), location: 0.0),
+            .init(color: .black.opacity(0.22), location: 0.5),
+            .init(color: .black.opacity(0.72), location: 1.0)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    static let profileStageScrim = LinearGradient(
+        stops: [
+            .init(color: .black.opacity(0.25), location: 0.0),
+            .init(color: .black.opacity(0.05), location: 0.4),
+            .init(color: .black.opacity(0.55), location: 0.72),
+            .init(color: .black.opacity(0.9), location: 1.0)
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
+    // Vinheta radial suave: escurece os cantos e concentra o olhar no centro.
+    static let profileVignette = RadialGradient(
+        colors: [.clear, .black.opacity(0.5)],
+        center: .center,
+        startRadius: 300,
+        endRadius: 1300
     )
 
     // Fundo da Home que acompanha a tonalidade do hero atual (camada de tela).
@@ -122,6 +169,31 @@ struct LiquidGlassFocusBorder: ViewModifier {
 extension View {
     func liquidGlassFocusBorder(_ isFocused: Bool, cornerRadius: CGFloat = Theme.Radius.card) -> some View {
         modifier(LiquidGlassFocusBorder(isFocused: isFocused, cornerRadius: cornerRadius))
+    }
+}
+
+// Foco de avatar circular estilo Netflix: anel branco fino colado na borda +
+// escala discreta + sombra suave de profundidade. Sem hoverEffect/liquid glass.
+struct ProfileCircleFocus: ViewModifier {
+    var isFocused: Bool
+    var scale: CGFloat = 1.06
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                Circle()
+                    .strokeBorder(Color.white, lineWidth: 4)
+                    .opacity(isFocused ? 1 : 0)
+            }
+            .scaleEffect(isFocused ? scale : 1)
+            .shadow(color: .black.opacity(isFocused ? 0.45 : 0), radius: 16, y: 8)
+            .animation(.easeOut(duration: 0.18), value: isFocused)
+    }
+}
+
+extension View {
+    func profileCircleFocus(_ isFocused: Bool, scale: CGFloat = 1.06) -> some View {
+        modifier(ProfileCircleFocus(isFocused: isFocused, scale: scale))
     }
 }
 
