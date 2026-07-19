@@ -31,9 +31,7 @@ nonisolated extension MediaItem {
             title: preview.name,
             kind: MediaItem.Kind(rawValue: catalogType ?? "") ?? MediaItem.Kind(rawValue: preview.type) ?? .movie,
             genres: preview.genres ?? [],
-            posterURL: preview.poster
-                .map { $0.replacingOccurrences(of: "w600_and_h900_bestv2", with: "w500") }
-                .flatMap(URL.init(string:)),
+            posterURL: Self.sizedPosterURL(preview.poster),
             backdropURL: preview.background.flatMap(URL.init(string:)),
             logoURL: preview.logo.flatMap(URL.init(string:)),
             synopsis: preview.description ?? "",
@@ -47,6 +45,14 @@ nonisolated extension MediaItem {
             cast: preview.appExtras?.cast?.map(Person.init(credit:)) ?? [],
             directors: directors
         )
+    }
+
+    private static func sizedPosterURL(_ poster: String?) -> URL? {
+        guard let poster else { return nil }
+        let sized = poster
+            .replacingOccurrences(of: "w600_and_h900_bestv2", with: "w500")
+            .replacingOccurrences(of: "/t/p/original/", with: "/t/p/w500/")
+        return URL(string: sized)
     }
 
     private static func people(fromCSV csv: String?) -> [Person] {
