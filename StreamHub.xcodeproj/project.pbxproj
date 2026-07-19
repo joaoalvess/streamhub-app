@@ -203,7 +203,7 @@
 			mainGroup = AEAEB6B12FE62C3A0096B66F;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AEAEB7F22FE62C3D0096B66F /* XCLocalSwiftPackageReference "Player" */,
+				AEAEB7F22FE62C3D0096B66F /* XCRemoteSwiftPackageReference "lumen-player" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AEAEB6BB2FE62C3B0096B66F /* Products */;
@@ -569,16 +569,21 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCLocalSwiftPackageReference section */
-		AEAEB7F22FE62C3D0096B66F /* XCLocalSwiftPackageReference "Player" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = Player;
+/* Begin XCRemoteSwiftPackageReference section */
+		AEAEB7F22FE62C3D0096B66F /* XCRemoteSwiftPackageReference "lumen-player" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/joaoalvess/lumen-player.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
 		};
-/* End XCLocalSwiftPackageReference section */
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		AEAEB7F32FE62C3D0096B66F /* Lumen */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = AEAEB7F22FE62C3D0096B66F /* XCRemoteSwiftPackageReference "lumen-player" */;
 			productName = Lumen;
 		};
 /* End XCSwiftPackageProductDependency section */

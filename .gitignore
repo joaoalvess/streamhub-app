@@ -48,3 +48,6 @@ references/
 
 # App secrets (bootstrapped locally, never versioned)
 StreamHub/Secrets.plist
+
+# Workspace de desenvolvimento local (assume lumen-player como pasta irma)
+StreamHub.xcworkspace/
