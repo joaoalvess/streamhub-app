@@ -31,7 +31,9 @@ struct RootView: View {
 
     @ViewBuilder
     private func destination(for section: MenuSection) -> some View {
-        if let config = section.homeConfiguration {
+        if section == .search {
+            SearchView()
+        } else if let config = section.homeConfiguration {
             HomeView(config: config)
         } else {
             ComingSoonView(title: section.title, icon: section.icon)

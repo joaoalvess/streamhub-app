@@ -32,6 +32,24 @@ struct MetadataAPI: Sendable {
         try await get(MetaResponse.self, at: "meta/\(type)/\(id).json").meta
     }
 
+    func search(type: String, id: String, query: String) async throws -> [MetaPreview] {
+        guard let path = Self.searchPath(type: type, id: id, query: query) else {
+            throw MetadataAPIError.invalidURL
+        }
+        return try await get(CatalogResponse.self, at: path).metas
+    }
+
+    nonisolated static func searchPath(type: String, id: String, query: String) -> String? {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: searchValueAllowed) else {
+            return nil
+        }
+        return "catalog/\(type)/\(id)/search=\(encoded).json"
+    }
+
+    private nonisolated static let searchValueAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+    )
+
     private func get<T: Decodable>(_ type: T.Type, at path: String) async throws -> T {
         let base = SecretsStore.shared.metadataBase?.absoluteString ?? Self.baseString
         guard let url = URL(string: base + "/" + path) else {
