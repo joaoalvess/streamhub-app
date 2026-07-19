@@ -45,6 +45,8 @@ enum Theme {
         static let episodeCardWidth: CGFloat = 420
         static let episodeCardHeight: CGFloat = 236 // 16:9
         static let profileCircle: CGFloat = 180
+        static let recentCardWidth: CGFloat = 560
+        static let recentCardHeight: CGFloat = 176
     }
 
     static let heroGradientVertical = LinearGradient(

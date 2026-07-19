@@ -26,6 +26,7 @@ struct ProfileEditorView: View {
     let target: ProfileEditorTarget
     @Environment(ProfileStore.self) private var profileStore
     @Environment(PlaybackProgressStore.self) private var progressStore: PlaybackProgressStore?
+    @Environment(RecentSearchesStore.self) private var recentSearchesStore: RecentSearchesStore?
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var avatarAsset: String?
@@ -213,6 +214,7 @@ struct ProfileEditorView: View {
         guard let profile = target.profile else { return }
         profileStore.delete(profile)
         progressStore?.removeData(for: profile.id)
+        recentSearchesStore?.removeData(for: profile.id)
         dismiss()
     }
 }

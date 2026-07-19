@@ -3,6 +3,7 @@ import SwiftUI
 struct AppRootGate: View {
     @Environment(ProfileStore.self) private var profileStore
     @Environment(PlaybackProgressStore.self) private var progressStore
+    @Environment(RecentSearchesStore.self) private var recentSearches
 
     var body: some View {
         ZStack {
@@ -21,6 +22,8 @@ struct AppRootGate: View {
                 progressStore.adoptLegacyDataIfNeeded(for: id)
             }
             progressStore.setActiveProfile(id)
+            recentSearches.setActiveProfile(id)
         }
     }
+
 }
