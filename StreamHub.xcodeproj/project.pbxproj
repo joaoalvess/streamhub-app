@@ -6,6 +6,10 @@
 	objectVersion = 110;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AEAEB7F12FE62C3D0096B66F /* Lumen in Frameworks */ = {isa = PBXBuildFile; productRef = AEAEB7F32FE62C3D0096B66F /* Lumen */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		AEAEB6C82FE62C3D0096B66F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -64,6 +68,7 @@
 		AEAEB6B72FE62C3B0096B66F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				AEAEB7F12FE62C3D0096B66F /* Lumen in Frameworks */,
 			);
 		};
 		AEAEB6C42FE62C3D0096B66F /* Frameworks */ = {
@@ -116,6 +121,9 @@
 				AEAEB6BC2FE62C3B0096B66F /* StreamHub */,
 			);
 			name = StreamHub;
+			packageProductDependencies = (
+				AEAEB7F32FE62C3D0096B66F /* Lumen */,
+			);
 			productName = StreamHub;
 			productReference = AEAEB6BA2FE62C3B0096B66F /* StreamHub.app */;
 			productType = "com.apple.product-type.application";
@@ -194,6 +202,9 @@
 			);
 			mainGroup = AEAEB6B12FE62C3A0096B66F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AEAEB7F22FE62C3D0096B66F /* XCLocalSwiftPackageReference "Player" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AEAEB6BB2FE62C3B0096B66F /* Products */;
 			projectDirPath = "";
@@ -557,6 +568,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AEAEB7F22FE62C3D0096B66F /* XCLocalSwiftPackageReference "Player" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Player;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AEAEB7F32FE62C3D0096B66F /* Lumen */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = Lumen;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = AEAEB6B22FE62C3A0096B66F /* Project object */;
 	validationLevel = 1;

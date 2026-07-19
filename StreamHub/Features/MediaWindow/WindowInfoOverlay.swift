@@ -5,6 +5,7 @@ enum WindowFocus: Hashable {
     case details
     case play
     case mode
+    case engine
     case add
     case info
     case season(Int)
@@ -25,9 +26,11 @@ struct WindowInfoOverlay: View {
     var isPlayEnabled = true
     var showsModeSelector = false
     var playbackMode: PlaybackMode = .dubbed
+    var playerEngine: PlayerEngine = .infuse
     var onPlay: () -> Void = {}
     var onCycleMode: () -> Void = {}
     var onHoldMode: () -> Void = {}
+    var onToggleEngine: () -> Void = {}
     var onAdd: () -> Void = {}
     var onInfo: () -> Void = {}
     var onShowDetails: () -> Void = {}
@@ -180,6 +183,13 @@ struct WindowInfoOverlay: View {
                 .focused(focus, equals: .mode)
                 .disabled(isPlayLoading)
             }
+
+            Button(action: onToggleEngine) {
+                Image(systemName: playerEngine.icon)
+            }
+            .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .engine))
+            .focused(focus, equals: .engine)
+            .disabled(isPlayLoading)
 
             Button(action: onAdd) {
                 Image(systemName: "plus")

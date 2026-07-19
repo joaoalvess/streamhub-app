@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Lumen
 
 @main
 struct StreamHubApp: App {
@@ -16,6 +17,8 @@ struct StreamHubApp: App {
 
     init() {
         SecretsStore.shared.bootstrapIfNeeded()
+        KSOptions.firstPlayerType = ProAVPlayer.self
+        KSOptions.secondPlayerType = KSMEPlayer.self
         _coordinator = State(initialValue: PlaybackCoordinator())
         _metaProvider = State(initialValue: MetaProvider())
         _profileStore = State(initialValue: ProfileStore())

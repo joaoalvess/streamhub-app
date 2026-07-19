@@ -5,6 +5,57 @@ protocol EnhancedStreamProvider {
     func remuxURL(videoURL: URL, audioURL: URL, item: MediaItem) async throws -> URL
 }
 
+nonisolated struct NativeSessionMetadata: Equatable {
+    let subtitle: String?
+    let seasonNumber: Int?
+    let episodeNumber: Int?
+    let synopsis: String?
+    let artworkURL: URL?
+    let year: Int?
+    let genres: [String]
+    let runtimeMinutes: Int?
+    let ageRatingLabel: String?
+    let ratingLabel: String?
+    let cast: [MediaItem.Person]
+    let directors: [MediaItem.Person]
+
+    init(
+        subtitle: String?,
+        synopsis: String?,
+        artworkURL: URL?,
+        year: Int?,
+        genres: [String],
+        runtimeMinutes: Int?,
+        ageRatingLabel: String?,
+        ratingLabel: String?,
+        seasonNumber: Int? = nil,
+        episodeNumber: Int? = nil,
+        cast: [MediaItem.Person] = [],
+        directors: [MediaItem.Person] = []
+    ) {
+        self.subtitle = subtitle
+        self.seasonNumber = seasonNumber
+        self.episodeNumber = episodeNumber
+        self.synopsis = synopsis
+        self.artworkURL = artworkURL
+        self.year = year
+        self.genres = genres
+        self.runtimeMinutes = runtimeMinutes
+        self.ageRatingLabel = ageRatingLabel
+        self.ratingLabel = ratingLabel
+        self.cast = cast
+        self.directors = directors
+    }
+}
+
+nonisolated struct NativePlaybackSession: Identifiable, Equatable {
+    let id = UUID()
+    let videoURL: URL
+    let title: String
+    let startSeconds: Int?
+    var metadata: NativeSessionMetadata?
+}
+
 @Observable
 final class PlaybackCoordinator {
     enum Route: Equatable {
@@ -60,6 +111,8 @@ final class PlaybackCoordinator {
     }
 
     private(set) var state: State = .idle
+    private(set) var nativeSession: NativePlaybackSession?
+    private var nativePosition: Int?
     let progressStore: PlaybackProgressStore
 
     private let api: StreamsAPI
@@ -80,13 +133,18 @@ final class PlaybackCoordinator {
         return .infuse
     }
 
-    func play(item: MediaItem, mode: PlaybackMode, preferredStream: AddonStream? = nil) async {
+    func play(
+        item: MediaItem,
+        mode: PlaybackMode,
+        engine: PlayerEngine = .infuse,
+        preferredStream: AddonStream? = nil
+    ) async {
         guard state != .loading, item.kind == .movie || item.isAnime else { return }
         switch route(for: item) {
         case .externalService(let service):
             await openExternal(service, item: item)
         case .infuse:
-            await playViaInfuse(item: item, mode: mode, preferredStream: preferredStream)
+            await playViaInfuse(item: item, mode: mode, engine: engine, preferredStream: preferredStream)
         }
     }
 
@@ -95,10 +153,18 @@ final class PlaybackCoordinator {
         episode: EpisodeItem,
         next: EpisodeItem?,
         mode: PlaybackMode,
+        engine: PlayerEngine = .infuse,
         preferredStream: AddonStream? = nil
     ) async {
         guard state != .loading else { return }
-        await playEpisodeViaInfuse(item: item, episode: episode, next: next, mode: mode, preferredStream: preferredStream)
+        await playEpisodeViaInfuse(
+            item: item,
+            episode: episode,
+            next: next,
+            mode: mode,
+            engine: engine,
+            preferredStream: preferredStream
+        )
     }
 
     func sources(for item: MediaItem, mode: PlaybackMode) async -> Result<[AddonStream], PlaybackError> {
@@ -142,6 +208,41 @@ final class PlaybackCoordinator {
         state = .idle
     }
 
+    func startNativeSession(
+        videoURL: URL,
+        title: String,
+        position: Int?,
+        entry: ResumeEntry,
+        episodeContext: EpisodeSessionContext? = nil,
+        metadata: NativeSessionMetadata? = nil
+    ) {
+        progressStore.registerSession(
+            videoURL: videoURL.absoluteString,
+            entry: entry,
+            episodeContext: episodeContext
+        )
+        nativePosition = nil
+        nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, startSeconds: position, metadata: metadata)
+        state = .idle
+    }
+
+    func updateNativePosition(_ seconds: Int) {
+        guard nativeSession != nil, seconds > 0 else { return }
+        nativePosition = seconds
+    }
+
+    func completeNativeSession() {
+        guard let session = nativeSession else { return }
+        nativeSession = nil
+        let videoURL = session.videoURL.absoluteString
+        if let position = nativePosition {
+            progressStore.applyCallback(lastPlayedURL: videoURL, position: position)
+        } else {
+            progressStore.discardSession(videoURL: videoURL)
+        }
+        nativePosition = nil
+    }
+
     private func openExternal(_ service: StreamingService, item: MediaItem) async {
         state = .loading
         for url in await titleURLs(for: service, item: item) {
@@ -183,7 +284,7 @@ final class PlaybackCoordinator {
         return candidates
     }
 
-    private func playViaInfuse(item: MediaItem, mode: PlaybackMode, preferredStream: AddonStream?) async {
+    private func playViaInfuse(item: MediaItem, mode: PlaybackMode, engine: PlayerEngine, preferredStream: AddonStream?) async {
         let query: (profile: StreamProfile, type: String, id: String)
         switch Self.streamQuery(for: item, mode: mode) {
         case .failure(let error):
@@ -206,31 +307,40 @@ final class PlaybackCoordinator {
             state = .failed(.noSources)
             return
         }
+        let contentId = item.contentId ?? query.id
+        let runtimeMinutes = RuntimeParser.minutes(from: item.runtime)
+        let position = resumePosition(for: contentId, runtimeMinutes: runtimeMinutes)
+        let entry = Self.resumeEntry(
+            for: item,
+            contentId: contentId,
+            imdbId: Self.imdbId(for: item),
+            runtimeMinutes: runtimeMinutes
+        )
+        if engine == .native {
+            startNativeSession(
+                videoURL: videoURL,
+                title: item.title,
+                position: position,
+                entry: entry,
+                metadata: Self.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes)
+            )
+            return
+        }
         guard InfuseLauncher.isInstalled else {
             state = .failed(.infuseNotInstalled)
             return
         }
-        let contentId = item.contentId ?? query.id
-        let runtimeMinutes = RuntimeParser.minutes(from: item.runtime)
         let playItem = InfusePlayItem(
             videoURL: videoURL,
             filename: Self.infuseFilename(for: item, filename: chosen.behaviorHints?.filename),
-            positionSeconds: resumePosition(for: contentId, runtimeMinutes: runtimeMinutes)
+            positionSeconds: position
         )
         guard let url = InfuseURLBuilder.playURL(item: playItem) else {
             state = .failed(.openFailed)
             return
         }
         let videoURLString = videoURL.absoluteString
-        progressStore.registerSession(
-            videoURL: videoURLString,
-            entry: Self.resumeEntry(
-                for: item,
-                contentId: contentId,
-                imdbId: Self.imdbId(for: item),
-                runtimeMinutes: runtimeMinutes
-            )
-        )
+        progressStore.registerSession(videoURL: videoURLString, entry: entry)
         if await InfuseLauncher.open(url) {
             state = .idle
         } else {
@@ -244,6 +354,7 @@ final class PlaybackCoordinator {
         episode: EpisodeItem,
         next: EpisodeItem?,
         mode: PlaybackMode,
+        engine: PlayerEngine,
         preferredStream: AddonStream?
     ) async {
         let query: (profile: StreamProfile, type: String)
@@ -268,24 +379,12 @@ final class PlaybackCoordinator {
             state = .failed(.noSources)
             return
         }
-        guard InfuseLauncher.isInstalled else {
-            state = .failed(.infuseNotInstalled)
-            return
-        }
         let seriesId = PlaybackProgressStore.seriesKey(for: item) ?? episode.videoId
-        let playItem = InfusePlayItem(
-            videoURL: videoURL,
-            filename: Self.infuseFilename(item: item, episode: episode, filename: chosen.behaviorHints?.filename),
-            positionSeconds: resumePosition(
-                seriesId: seriesId,
-                videoId: episode.videoId,
-                runtimeMinutes: episode.runtimeMinutes
-            )
+        let position = resumePosition(
+            seriesId: seriesId,
+            videoId: episode.videoId,
+            runtimeMinutes: episode.runtimeMinutes
         )
-        guard let url = InfuseURLBuilder.playURL(item: playItem) else {
-            state = .failed(.openFailed)
-            return
-        }
         let context = EpisodeSessionContext(
             seriesId: seriesId,
             videoId: episode.videoId,
@@ -301,12 +400,39 @@ final class PlaybackCoordinator {
                 )
             }
         )
-        let videoURLString = videoURL.absoluteString
-        progressStore.registerSession(
-            videoURL: videoURLString,
-            entry: Self.resumeEntry(for: item, seriesId: seriesId, episode: episode),
-            episodeContext: context
+        let entry = Self.resumeEntry(for: item, seriesId: seriesId, episode: episode)
+        if engine == .native {
+            startNativeSession(
+                videoURL: videoURL,
+                title: item.title,
+                position: position,
+                entry: entry,
+                episodeContext: context,
+                metadata: Self.sessionMetadata(
+                    for: item,
+                    subtitle: episode.title.isEmpty ? nil : episode.title,
+                    runtimeMinutes: episode.runtimeMinutes,
+                    seasonNumber: episode.season,
+                    episodeNumber: episode.episode
+                )
+            )
+            return
+        }
+        guard InfuseLauncher.isInstalled else {
+            state = .failed(.infuseNotInstalled)
+            return
+        }
+        let playItem = InfusePlayItem(
+            videoURL: videoURL,
+            filename: Self.infuseFilename(item: item, episode: episode, filename: chosen.behaviorHints?.filename),
+            positionSeconds: position
         )
+        guard let url = InfuseURLBuilder.playURL(item: playItem) else {
+            state = .failed(.openFailed)
+            return
+        }
+        let videoURLString = videoURL.absoluteString
+        progressStore.registerSession(videoURL: videoURLString, entry: entry, episodeContext: context)
         if await InfuseLauncher.open(url) {
             state = .idle
         } else {
@@ -437,6 +563,29 @@ final class PlaybackCoordinator {
             .map { ($0 as NSString).pathExtension.lowercased() }
             .flatMap { knownExtensions.contains($0) ? $0 : nil }
             ?? "mkv"
+    }
+
+    private static func sessionMetadata(
+        for item: MediaItem,
+        subtitle: String?,
+        runtimeMinutes: Int?,
+        seasonNumber: Int? = nil,
+        episodeNumber: Int? = nil
+    ) -> NativeSessionMetadata {
+        NativeSessionMetadata(
+            subtitle: subtitle,
+            synopsis: item.synopsis.isEmpty ? nil : item.synopsis,
+            artworkURL: item.backdropURL ?? item.posterURL,
+            year: item.year > 0 ? item.year : nil,
+            genres: item.genres,
+            runtimeMinutes: runtimeMinutes,
+            ageRatingLabel: item.ageRating?.label,
+            ratingLabel: item.imdbRating,
+            seasonNumber: seasonNumber,
+            episodeNumber: episodeNumber,
+            cast: item.cast,
+            directors: item.directors
+        )
     }
 
     private static func resumeEntry(for item: MediaItem, seriesId: String, episode: EpisodeItem) -> ResumeEntry {

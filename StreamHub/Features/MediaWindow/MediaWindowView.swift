@@ -17,6 +17,7 @@ struct MediaWindowView: View {
     @State private var sourcesTarget: PlayTarget?
     @State private var loaded: Loaded?
     @State private var playbackMode: PlaybackMode = .dubbed
+    @State private var playerEngine: PlayerEngine = .stored()
     @State private var seriesModel = SeriesDetailViewModel()
     @FocusState private var focus: WindowFocus?
     @Environment(\.dismiss) private var dismiss
@@ -32,6 +33,8 @@ struct MediaWindowView: View {
     }
 
     var body: some View {
+        let nativeSession = coordinator?.nativeSession
+
         GeometryReader { geo in
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -93,13 +96,34 @@ struct MediaWindowView: View {
         }
         .ignoresSafeArea()
         .defaultFocus($focus, .carousel)
-        .onExitCommand(perform: handleBack)
+        .onExitCommand {
+            guard nativeSession == nil else { return }
+            handleBack()
+        }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
         .onChange(of: centerIndex) { _, _ in
             withAnimation(.easeOut(duration: 0.25)) { loaded = nil }
         }
         .task(id: centerIndex) { await loadAssets() }
         .task(id: centerIndex) { await loadSeries() }
+        .disabled(nativeSession != nil)
+        .accessibilityHidden(nativeSession != nil)
+        .overlay {
+            if let nativeSession {
+                NativePlayerView(
+                    session: nativeSession,
+                    onClose: { coordinator?.completeNativeSession() }
+                )
+                .transition(.opacity)
+                .zIndex(1)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: nativeSession?.id)
+        .onChange(of: nativeSession?.id) { previousID, currentID in
+            if previousID != nil, currentID == nil {
+                focus = overlayReturnFocus
+            }
+        }
         .alert("Não foi possível reproduzir", isPresented: playbackAlertPresented) {
             Button("OK", role: .cancel) { coordinator?.dismissError() }
         } message: {
@@ -132,12 +156,18 @@ struct MediaWindowView: View {
             isPlayEnabled: isPlayEnabled(for: loaded.item),
             showsModeSelector: showsModeSelector(for: loaded.item),
             playbackMode: playbackMode,
+            playerEngine: playerEngine,
             onPlay: { play(loaded.item) },
             onCycleMode: {
                 guard !showsSources else { return }
                 playbackMode = playbackMode.next
             },
             onHoldMode: { holdMode(loaded.item) },
+            onToggleEngine: {
+                guard !showsSources else { return }
+                playerEngine = playerEngine.next
+                playerEngine.store()
+            },
             onShowDetails: showDetails
         )
     }
@@ -200,7 +230,7 @@ struct MediaWindowView: View {
 
     private func isOverlayFocus(_ focus: WindowFocus) -> Bool {
         switch focus {
-        case .play, .mode, .add, .info, .details, .carousel:
+        case .play, .mode, .engine, .add, .info, .details, .carousel:
             true
         case .season, .episode, .special:
             false
@@ -321,7 +351,9 @@ struct MediaWindowView: View {
     private func playEpisode(_ episode: EpisodeItem, item: MediaItem) {
         guard let coordinator else { return }
         let next = seriesModel.episodeAfter(episode)
-        Task { await coordinator.play(item: item, episode: episode, next: next, mode: playbackMode) }
+        Task {
+            await coordinator.play(item: item, episode: episode, next: next, mode: playbackMode, engine: playerEngine)
+        }
     }
 
     private func start(
@@ -332,7 +364,14 @@ struct MediaWindowView: View {
     ) {
         switch target {
         case .movie:
-            Task { await coordinator.play(item: item, mode: playbackMode, preferredStream: preferredStream) }
+            Task {
+                await coordinator.play(
+                    item: item,
+                    mode: playbackMode,
+                    engine: playerEngine,
+                    preferredStream: preferredStream
+                )
+            }
         case .episode(let episode, let next):
             Task {
                 await coordinator.play(
@@ -340,6 +379,7 @@ struct MediaWindowView: View {
                     episode: episode,
                     next: next,
                     mode: playbackMode,
+                    engine: playerEngine,
                     preferredStream: preferredStream
                 )
             }
