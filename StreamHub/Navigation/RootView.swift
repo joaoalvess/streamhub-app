@@ -35,8 +35,6 @@ struct RootView: View {
             SearchView()
         } else if let config = section.homeConfiguration {
             HomeView(config: config)
-        } else {
-            ComingSoonView(title: section.title, icon: section.icon)
         }
     }
 }
