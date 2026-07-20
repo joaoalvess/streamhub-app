@@ -31,10 +31,10 @@ struct RootView: View {
 
     @ViewBuilder
     private func destination(for section: MenuSection) -> some View {
-        if section == .search {
-            SearchView()
-        } else if let config = section.homeConfiguration {
+        if let config = section.homeConfiguration {
             HomeView(config: config)
+        } else {
+            SearchView()
         }
     }
 }
