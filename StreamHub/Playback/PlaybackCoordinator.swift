@@ -113,6 +113,7 @@ final class PlaybackCoordinator {
     private(set) var state: State = .idle
     private(set) var nativeSession: NativePlaybackSession?
     private var nativePosition: Int?
+    var nativePositionSeconds: Int? { nativePosition }
     let progressStore: PlaybackProgressStore
 
     private let api: StreamsAPI

@@ -6,7 +6,7 @@ enum MenuIcon {
 }
 
 enum MenuSection: String, Hashable, Identifiable {
-    case search, filmes, series, animes
+    case search, filmes, series, animes, biblioteca
     case netflix, hbo, disney, appleTV, prime, crunchyroll
     case claro, paramount, globoplay, discovery, hulu
 
@@ -18,6 +18,7 @@ enum MenuSection: String, Hashable, Identifiable {
         case .filmes: "Filmes"
         case .series: "Séries"
         case .animes: "Animes"
+        case .biblioteca: "Biblioteca"
         case .netflix: "Netflix"
         case .hbo: "HBO Max"
         case .disney: "Disney+"
@@ -38,6 +39,7 @@ enum MenuSection: String, Hashable, Identifiable {
         case .filmes: .symbol("film")
         case .series: .symbol("tv")
         case .animes: .symbol("sparkles")
+        case .biblioteca: .symbol("books.vertical")
         case .netflix: .asset("logo.netflix")
         case .hbo: .asset("logo.hbo")
         case .disney: .asset("logo.disney")
@@ -52,7 +54,7 @@ enum MenuSection: String, Hashable, Identifiable {
         }
     }
 
-    static let principais: [MenuSection] = [.search, .filmes, .series, .animes]
+    static let principais: [MenuSection] = [.search, .filmes, .series, .animes, .biblioteca]
     static let canais: [MenuSection] = [
         .netflix, .hbo, .disney, .appleTV, .prime, .crunchyroll,
         .claro, .paramount, .globoplay, .discovery, .hulu

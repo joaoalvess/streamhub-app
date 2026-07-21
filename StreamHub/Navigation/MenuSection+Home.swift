@@ -5,6 +5,8 @@ nonisolated extension MenuSection {
         switch self {
         case .search:
             nil
+        case .biblioteca:
+            nil
         case .filmes:
             .filmes
         case .series:
