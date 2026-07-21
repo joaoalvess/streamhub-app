@@ -33,7 +33,7 @@ struct LibraryMappingTests {
     @Test func mapsEntryWithImagesAndProgress() throws {
         let base = try #require(URL(string: "https://jellyfin.example"))
         let entry = LibraryEntry(item: makeItem(playedPercentage: 40), base: base)
-        #expect(entry.contentId == "jellyfin:item-1")
+        #expect(entry.id == "item-1")
         #expect(entry.name == "Some File")
         #expect(entry.year == 2020)
         #expect(entry.progress == 0.4)
@@ -74,14 +74,12 @@ struct LibraryMappingTests {
         #expect(entry.startSeconds == 90)
     }
 
-    @Test func buildsResumeEntryForLocalStore() {
-        let entry = LibraryEntry(item: makeItem(), base: nil)
-        let resume = entry.resumeEntry()
-        #expect(resume.contentId == "jellyfin:item-1")
-        #expect(resume.title == "Some File")
-        #expect(resume.runtimeMinutes == 60)
-        #expect(resume.mediaKind == "movie")
-        #expect(resume.positionSeconds == 0)
-        #expect(resume.imdbId == nil)
+    @Test func buildsSessionMetadataFromEntry() throws {
+        let base = try #require(URL(string: "https://jellyfin.example"))
+        let entry = LibraryEntry(item: makeItem(), base: base)
+        let metadata = entry.sessionMetadata()
+        #expect(metadata.year == 2020)
+        #expect(metadata.runtimeMinutes == 60)
+        #expect(metadata.artworkURL == entry.backdropURL)
     }
 }

@@ -124,7 +124,7 @@ struct LibraryView: View {
                     videoURL: url,
                     title: entry.name,
                     position: entry.startSeconds,
-                    entry: entry.resumeEntry(),
+                    entry: nil,
                     metadata: entry.sessionMetadata()
                 )
                 activeSessionID = coordinator.nativeSession?.id
@@ -143,6 +143,9 @@ struct LibraryView: View {
         reporter?.stop()
         reporter = nil
         coordinator?.completeNativeSession()
-        Task { await model.refreshResume() }
+        Task {
+            try? await Task.sleep(for: .seconds(1))
+            await model.refreshResume()
+        }
     }
 }

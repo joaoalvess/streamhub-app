@@ -34,10 +34,6 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
         }
     }
 
-    var contentId: String {
-        "jellyfin:\(id)"
-    }
-
     var startSeconds: Int? {
         guard let resumePositionSeconds, resumePositionSeconds >= 30 else { return nil }
         if let runtimeMinutes, runtimeMinutes > 0,
@@ -45,25 +41,6 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
             return nil
         }
         return resumePositionSeconds
-    }
-
-    func resumeEntry() -> ResumeEntry {
-        ResumeEntry(
-            contentId: contentId,
-            imdbId: nil,
-            title: name,
-            year: year ?? 0,
-            posterURL: posterURL,
-            backdropURL: backdropURL,
-            logoURL: nil,
-            runtimeMinutes: runtimeMinutes,
-            positionSeconds: 0,
-            updatedAt: Date(),
-            serviceCode: nil,
-            synopsis: nil,
-            genres: nil,
-            mediaKind: MediaItem.Kind.movie.rawValue
-        )
     }
 
     func sessionMetadata() -> NativeSessionMetadata {

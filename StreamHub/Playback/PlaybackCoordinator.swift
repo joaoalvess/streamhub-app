@@ -213,15 +213,17 @@ final class PlaybackCoordinator {
         videoURL: URL,
         title: String,
         position: Int?,
-        entry: ResumeEntry,
+        entry: ResumeEntry?,
         episodeContext: EpisodeSessionContext? = nil,
         metadata: NativeSessionMetadata? = nil
     ) {
-        progressStore.registerSession(
-            videoURL: videoURL.absoluteString,
-            entry: entry,
-            episodeContext: episodeContext
-        )
+        if let entry {
+            progressStore.registerSession(
+                videoURL: videoURL.absoluteString,
+                entry: entry,
+                episodeContext: episodeContext
+            )
+        }
         nativePosition = nil
         nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, startSeconds: position, metadata: metadata)
         state = .idle
