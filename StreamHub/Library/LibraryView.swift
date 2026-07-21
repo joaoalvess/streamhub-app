@@ -4,6 +4,7 @@ struct LibraryView: View {
     @State private var model = LibraryViewModel()
     @State private var activeSessionID: UUID?
     @State private var playbackMessage: String?
+    @State private var reporter: JellyfinPlaybackReporter?
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
 
     var body: some View {
@@ -127,6 +128,9 @@ struct LibraryView: View {
                     metadata: entry.sessionMetadata()
                 )
                 activeSessionID = coordinator.nativeSession?.id
+                let sessionReporter = model.makeReporter(coordinator: coordinator)
+                sessionReporter.start(itemId: entry.id, positionSeconds: entry.startSeconds ?? 0)
+                reporter = sessionReporter
             } catch {
                 playbackMessage = LibraryViewModel.message(for: error)
             }
@@ -136,6 +140,8 @@ struct LibraryView: View {
     private func closePlayer() {
         guard activeSessionID != nil else { return }
         activeSessionID = nil
+        reporter?.stop()
+        reporter = nil
         coordinator?.completeNativeSession()
         Task { await model.refreshResume() }
     }

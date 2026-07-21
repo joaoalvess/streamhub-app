@@ -120,7 +120,7 @@ nonisolated struct JellyfinPlaybackReport: Encodable, Sendable {
     }
 }
 
-nonisolated enum JellyfinPlaybackEvent: Sendable {
+nonisolated enum JellyfinPlaybackEvent: Equatable, Sendable {
     case start
     case progress
     case stopped

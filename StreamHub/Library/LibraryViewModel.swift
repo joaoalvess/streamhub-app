@@ -203,6 +203,10 @@ final class LibraryViewModel {
         try await api.streamURL(itemId: entry.id)
     }
 
+    func makeReporter(coordinator: PlaybackCoordinator) -> JellyfinPlaybackReporter {
+        JellyfinPlaybackReporter(api: api, coordinator: coordinator)
+    }
+
     nonisolated static func message(for error: any Error) -> String {
         switch error {
         case JellyfinError.notConfigured:
