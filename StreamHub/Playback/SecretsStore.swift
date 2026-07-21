@@ -11,6 +11,12 @@ nonisolated struct SecretsStore {
         case aioStreamsCasualBase = "AIOStreamsCasualBase"
         case aioStreamsAnimeBase = "AIOStreamsAnimeBase"
         case aioMetadataBase = "AIOMetadataBase"
+        case jellyfinBase = "JellyfinBase"
+        case jellyfinUsername = "JellyfinUsername"
+        case jellyfinPw = "JellyfinPw"
+        case jellyfinAccessToken = "JellyfinAccessToken"
+        case jellyfinUserId = "JellyfinUserId"
+        case jellyfinDeviceId = "JellyfinDeviceId"
     }
 
     func bootstrapIfNeeded() {
@@ -39,7 +45,21 @@ nonisolated struct SecretsStore {
         read(.aioMetadataBase).flatMap(URL.init(string:))
     }
 
-    private func read(_ key: Key) -> String? {
+    var jellyfinBase: URL? {
+        guard let value = read(.jellyfinBase) else { return nil }
+        let normalized = value.hasSuffix("/") ? String(value.dropLast()) : value
+        return URL(string: normalized)
+    }
+
+    var jellyfinUsername: String? {
+        read(.jellyfinUsername)
+    }
+
+    var jellyfinPw: String? {
+        read(.jellyfinPw)
+    }
+
+    func read(_ key: Key) -> String? {
         var query = baseQuery(for: key)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -49,7 +69,11 @@ nonisolated struct SecretsStore {
         return String(data: data, encoding: .utf8)
     }
 
-    private func write(_ value: String, for key: Key) {
+    func remove(_ key: Key) {
+        SecItemDelete(baseQuery(for: key) as CFDictionary)
+    }
+
+    func write(_ value: String, for key: Key) {
         let data = Data(value.utf8)
         var query = baseQuery(for: key)
         let update: [String: Any] = [kSecValueData as String: data]
