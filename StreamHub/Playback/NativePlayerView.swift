@@ -7,12 +7,19 @@ struct NativePlayerView: View {
 
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @StateObject private var player = KSVideoPlayer.Coordinator()
+    @State private var options: KSOptions
+
+    init(session: NativePlaybackSession, onClose: @escaping () -> Void) {
+        self.session = session
+        self.onClose = onClose
+        _options = State(initialValue: Self.makeOptions(session: session))
+    }
 
     var body: some View {
         KSVideoPlayerView(
             coordinator: player,
             url: session.videoURL,
-            options: makeOptions(),
+            options: options,
             title: session.title,
             onClose: onClose
         )
@@ -26,7 +33,7 @@ struct NativePlayerView: View {
         .onReceive(player.timemodel.$currentTime) { coordinator?.updateNativePosition($0) }
     }
 
-    private func makeOptions() -> KSOptions {
+    private static func makeOptions(session: NativePlaybackSession) -> KSOptions {
         let options = KSOptions()
         if let start = session.startSeconds {
             options.startPlayTime = TimeInterval(start)
