@@ -16,6 +16,10 @@ struct BackdropCarousel: View {
 
     @State private var scrollTarget: Int?
 
+    private var scrollPositionBinding: Binding<Int?> {
+        Binding(get: { scrollTarget }, set: { _ in })
+    }
+
     var body: some View {
         GeometryReader { geo in
             let cardWidth = geo.size.width * 0.9
@@ -36,7 +40,7 @@ struct BackdropCarousel: View {
                     .scrollTargetLayout()
                 }
                 .contentMargins(.horizontal, (geo.size.width - cardWidth) / 2, for: .scrollContent)
-                .scrollPosition(id: $scrollTarget, anchor: .center)
+                .scrollPosition(id: scrollPositionBinding, anchor: .center)
                 .scrollTargetBehavior(.viewAligned)
                 .scrollClipDisabled()
                 .scrollDisabled(true)
