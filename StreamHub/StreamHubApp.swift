@@ -19,6 +19,7 @@ struct StreamHubApp: App {
         SecretsStore.shared.bootstrapIfNeeded()
         KSOptions.firstPlayerType = ProAVPlayer.self
         KSOptions.secondPlayerType = KSMEPlayer.self
+        KSOptions.audioPlayerType = AudioRendererPlayer.self
         _coordinator = State(initialValue: PlaybackCoordinator())
         _metaProvider = State(initialValue: MetaProvider())
         _profileStore = State(initialValue: ProfileStore())
