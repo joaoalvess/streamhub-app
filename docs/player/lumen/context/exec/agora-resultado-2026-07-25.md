@@ -225,3 +225,34 @@ Pontos que a análise estática não prova e o compilador vai julgar primeiro:
 16. O plano dizia que a URL do `KSVideoPlayerView` deveria deixar de ser `@State`; falso — `openURL(_:)` a muta internamente. Corrigido in loco; a propagação virou `requestedURL` + `.task(id:)`.
 
 **Housekeeping do lado do player:** a atualização de `README.md`, `ROADMAP.md` público e `docs/02-camada-avplayer.md` do `lumen-player` (item 2 da F5 do plano) corre em paralelo no outro repo e **não está coberta por este relatório** — conferir antes do push.
+
+---
+
+## Rodada extra: as duas lentes que tinham caído (2026-07-25)
+
+Duas revisões adversariais previstas no plano não chegaram a rodar na execução original (erro de conexão da API): a lente de **concorrência + núcleo de playback sobre a F3** e a lente de **spec + crash-safety sobre o núcleo do reescritor Dolby Vision (F4)**. Elas rodaram depois, sobre o estado final da branch, e a correção gerou 8 commits novos no `lumen-player` — posteriores à tabela de commits acima (a branch está com 66 commits, não 49).
+
+| Achado | Veredito | Commit |
+|---|---|---|
+| Fast-path de seek podia ressuscitar `state` de `.closed` para `.reading` (checagem sem lock antes do commit) e travar o teardown para sempre — `readThread` nunca lê `readOperation.isCancelled` | procede | `fix: never resurrect a closed source from the memory seek commit` |
+| Completion de uma tentativa de drenagem abandonada por timeout era creditado à tentativa seguinte, podendo confirmar um seek com uma track ainda não drenada | procede | `fix: ignore memory seek drains from an abandoned attempt` |
+| No caminho elegível, A/V continuavam tocando o trecho pré-seek até a read thread destravar do `av_read_frame`, embora a barra já mostrasse o alvo | procede | `fix: stop the old audio and video when the memory seek starts` |
+| Pedido de drenagem numa track cuja decode thread morreu (`.failed`/`.finished`) só era resolvido pelo timeout de 0,5 s | procede em parte — o `fastSeek` religa a thread quando a operação já terminou, então **não** era permanente; sobrava a janela entre o `break outerLoop` e o `isFinished` | `fix: fail the memory seek fast when the decode thread cannot drain` |
+| Tamanho do `AVDOVIDecoderConfigurationRecord` fixo em 9 bytes, com o header dizendo que o `sizeof` não é ABI pública | procede | `fix: size the dolby vision record from the struct the demuxer publishes` |
+| Depois de uma falha de conversão, a thread de leitura seguia chamando `writeProAVPacket`; `closeSegment` não tem guarda de falha e anunciava segmento truncado | procede | `fix: stop writing the remux output once the session failed` |
+| `emptyRewrittenPayload` usado para duas causas sem relação | procede | `refactor: name the unaddressable payload failure apart from the empty one` |
+| Nenhum teste exercitava `convertRPUNALUnitToProfile81` (superfície FFI com o libdovi) | procede | `test: cover the libdovi conversion of bytes that are not an rpu` |
+| Ordem do commit do fast-path (`state` antes de `isSeek`/clocks) divergia do caminho de rede | procede | resolvido junto com o primeiro commit da tabela |
+
+Detalhes que valem para a próxima leitura do código:
+
+- O commit do fast-path agora acontece inteiro dentro da mesma seção crítica (`isSeek` → clocks → `state = .reading`), espelhando o caminho de rede. Ele sai do laço por `continue` — a condição do `while` já derruba a thread quando o estado é `.closed`.
+- O caminho **de rede** (`avformat_seek_file`) tem a mesma forma antiga (checagem de `.closed` solta, escrita de `state` depois, fora do lock) e **não foi mexido**: o buraco é anterior a esta task e a correção pede mover a escrita do `state` para dentro do `condition`. Entra como pendência.
+- A entrada do fast-path passou a exigir que a track esteja em `.decoding`/`.flush`; e todas as saídas da decode thread (mais o `shutdown`) resolvem o pedido de drenagem pendente com falha, em vez de deixá-lo apodrecer até o deadline.
+- O reescritor de DV nunca mais é desligado no meio do caminho: a sessão falha e `writeProAVPacket` sai na primeira linha (`session.isFailed`), então nem packet cru nem `#EXTINF` novo saem depois da falha.
+- O teste novo do libdovi usa entradas que morrem no `validated_trimmed_data` (comprimento < 25 e start bytes inválidos), justamente para não empurrar lixo pelo parser de bits.
+
+**Pendências que esta rodada acrescenta:**
+
+17. **Corrida de shutdown no caminho de rede do seek** (`MEPlayerItem.swift`, ramo do `avformat_seek_file`) — mesma classe do achado corrigido no fast-path, pré-existente à task: a checagem de `.closed` e a escrita de `state = .reading` não são atômicas, então um `shutdown()` no meio pode ressuscitar a read thread e bloquear o `closeOperation` (que depende do `readOperation`) para sempre.
+18. **`startPacket(atOrBefore:)` varre o anel inteiro sob o lock** (`MEPlayerItemTrack.swift`), até 3× por seek (~1,5 k packets com 30 s bufferizados, ~100 µs por varredura com o lock retido). O corte antecipado exige uma margem sobre o alvo — os timestamps estão em ordem de decode e com B-frames o pts desordena — e mexer nisso sem poder medir em hardware não pareceu bom negócio. Fica como otimização anotada, não como bug.
