@@ -2,6 +2,8 @@
 
 **Data:** 2026-07-25 · **Branches:** `lumen-player@task/agora-kanban` (base `main` = `ae68f21`) e `streamhub-app@task/agora-kanban` · **Status:** as quatro fases implementadas, revisadas adversarialmente (2-3 lentes por fase + 1 rodada sobre o resultado integrado) e corrigidas — **nada foi compilado, testado nem pushado**. Aguarda build no Xcode e validação em hardware pelo dono.
 
+**Ressalva de honestidade sobre a revisão:** duas das lentes previstas — **concorrência/núcleo de playback sobre a F3** e **spec/crash-safety sobre o núcleo do reescritor Dolby Vision (F4)** — não chegaram a rodar na execução original: caíram por erro de conexão da API, não por decisão. Elas foram **refeitas depois**, sobre a branch final já merged, e produziram 8 commits de correção no `lumen-player`. O resultado está em "[Rodada extra: as duas lentes que tinham caído](#rodada-extra-as-duas-lentes-que-tinham-caído-2026-07-25)", no fim deste documento, e os commits estão na tabela abaixo.
+
 Plano executado: [plano-agora-2026-07-25.md](plano-agora-2026-07-25.md). O plano previa fases sequenciais numa branch única; a execução real usou **worktrees paralelos** (ver "Forma do histórico").
 
 ## Forma do histórico (importante para ler o `git log`)
@@ -64,7 +66,7 @@ Os três merges auto-resolveram sem conflito (as regiões de `MEPlayerItem.swift
 
 ## Commits
 
-### `lumen-player` (branch `task/agora-kanban`, 49 commits, base `ae68f21`)
+### `lumen-player` (branch `task/agora-kanban`, 66 commits, base `ae68f21`)
 
 | Fase | Commit | Conteúdo |
 |---|---|---|
@@ -108,10 +110,25 @@ Os três merges auto-resolveram sem conflito (as regiões de `MEPlayerItem.swift
 | int. rev | `332bc92` | `fix: serialize the pending source switch lifecycle` |
 | int. rev | `b907717` | `fix: restore the playback position after promoting a switched source` |
 | int. rev | `980ddf7` | `test: cover waking a consumer blocked on an empty queue` |
+| docs | `69fab1a` · `4d9058d` | sinalização Atmos/DV do remux e quem drena a fila no seek em RAM (doc 03) |
+| docs | `91b87be` | hot swap de fonte na camada AVPlayer (doc 02) |
+| docs | `26c7068` | visão geral de capacidades depois do remux e do seek (doc 01 + `docs/README.md`) |
+| docs | `f39a3f8` · `b7c6e8a` · `c550cef` | `README.md` e `ROADMAP.md` **públicos**: lista de features entregues, itens concluídos fora do roadmap, alegações de DV/Atmos aterradas no que o código faz |
+| docs | `b197b25` · `58adf4b` · `0e85a90` | correções de precisão nos docs 02/03 (gate do remux, confirmação do dreno, ordem do coalescing) |
+| F3 lente | `c57e557` | `fix: never resurrect a closed source from the memory seek commit` |
+| F3 lente | `2e8eef4` | `fix: ignore memory seek drains from an abandoned attempt` |
+| F3 lente | `e8b4ba2` | `fix: stop the old audio and video when the memory seek starts` |
+| F3 lente | `b8082f9` | `fix: fail the memory seek fast when the decode thread cannot drain` |
+| F4 lente | `f5dee32` | `fix: size the dolby vision record from the struct the demuxer publishes` |
+| F4 lente | `320642d` | `fix: stop writing the remux output once the session failed` |
+| F4 lente | `10963e7` | `refactor: name the unaddressable payload failure apart from the empty one` |
+| F4 lente | `0873bd1` | `test: cover the libdovi conversion of bytes that are not an rpu` |
+
+As linhas `docs` são o item 2 da F5 do plano (housekeeping de `README`/`ROADMAP`/`docs/`), feito nesta mesma branch. As linhas `F3 lente`/`F4 lente` são a rodada extra descrita no fim do documento.
 
 Higiene conferida: todos os commits têm o dono como autor, **nenhum trailer**, nenhuma atribuição a IA, nenhuma menção a StreamHub/debrid/TorBox/AIOStreams nem caminho absoluto da máquina — no conteúdo e nas mensagens.
 
-### `streamhub-app` (branch `task/agora-kanban`, 5 commits)
+### `streamhub-app` (branch `task/agora-kanban`, 11 commits contando o que fecha este relatório)
 
 | Commit | Conteúdo |
 |---|---|
@@ -120,6 +137,12 @@ Higiene conferida: todos os commits têm o dono como autor, **nenhum trailer**, 
 | `a5956c8` | `test: cover native source switching in the coordinator` |
 | `4ce035d` | `fix: route source switches by content instead of title` — `contentKey` |
 | `7d1eab5` | `test: cover the content key kept across a source switch` |
+| `bf636f0` | `docs: add the agora kanban execution plan` — plano executado + apontamento no `ROADMAP.md` |
+| `4847a08` | `docs: close the spurious proav fallback pendency` — pendência antiga do [[proavplayer]] fechada pela F2 |
+| `93910c5` | `docs: report the agora kanban execution result` — este documento |
+| `7d5d1a7` | `docs: retire the delivered agora tasks and reorder the lumen kanban` — 4 tasks entregues saem do 🎯 Agora, tasks novas entram |
+| `0c75fe7` | `docs: record the two review lenses that were missing from the agora run` — seção da rodada extra |
+| _(este)_ | `docs: correct the counts and the missing commits in the agora report` — números recontados contra o `git log` real |
 
 ---
 
@@ -128,15 +151,19 @@ Higiene conferida: todos os commits têm o dono como autor, **nenhum trailer**, 
 ### `lumen-player` — novos
 - `Sources/Lumen/MEPlayer/ProAVInitBoundaryScanner.swift` — box-walk ISOBMFF que separa `[ftyp][moov]` de `[moof][mdat]…` no stream do muxer.
 - `Sources/Lumen/MEPlayer/DOVIPacketRewriter.swift` — walker/reassembler de NALs HEVC + conversão de RPU via Libdovi + builder do registro `dvcC`/`dvvC` de saída.
-- `Tests/LumenTests/`: `ProAVInitBoundaryScannerTest.swift` (9), `ProAVPlaylistTest.swift` (13), `SourceSwitchTest.swift` (6), `MemorySeekTests.swift` (23), `DOVIPacketRewriterTest.swift` (15) — **66 testes XCTest novos, nenhum executado**.
+- `Tests/LumenTests/`: `ProAVInitBoundaryScannerTest.swift` (9), `ProAVPlaylistTest.swift` (13), `SourceSwitchTest.swift` (6), `MemorySeekTests.swift` (23), `DOVIPacketRewriterTest.swift` (17) — **68 testes XCTest novos, nenhum executado**. Os dois últimos do `DOVIPacketRewriterTest` são da rodada extra e são os únicos que exercitam o FFI real com o Libdovi.
 
 ### `lumen-player` — modificados
-`MEPlayerItem.swift` (remux: movflags, gate de header, fronteira do init, reescrita DOVI, override do side data; seek: fast-path em RAM), `MEPlayerItemTrack.swift`, `CircularBuffer.swift`, `ProAVPlaylist.swift`, `ProAVRemuxSession.swift`, `ProAVPlayer.swift`, `KSAVPlayer.swift`, `KSPlayerLayer.swift`, `KSVideoPlayer.swift`, `MediaPlayerProtocol.swift`, `KSVideoPlayerView.swift`, `KSOptions.swift`, `docs/03-engine-meplayer-demux-e-pipeline.md`. Diff completo da branch (novos + modificados): 20 arquivos, +2178/−76.
+Código: `MEPlayerItem.swift` (remux: movflags, gate de header, fronteira do init, reescrita DOVI, override do side data; seek: fast-path em RAM), `MEPlayerItemTrack.swift`, `CircularBuffer.swift`, `ProAVPlaylist.swift`, `ProAVRemuxSession.swift`, `ProAVPlayer.swift`, `KSAVPlayer.swift`, `KSPlayerLayer.swift`, `KSVideoPlayer.swift`, `MediaPlayerProtocol.swift`, `KSVideoPlayerView.swift`, `KSOptions.swift`.
+
+Documentação (housekeeping da F5, na mesma branch): `README.md`, `ROADMAP.md`, `docs/README.md`, `docs/01-vis-o-geral-e-build.md`, `docs/02-camada-avplayer.md`, `docs/03-engine-meplayer-demux-e-pipeline.md`.
+
+Diff completo da branch (novos + modificados, código + docs): **25 arquivos, +2286/−113**.
 
 **Não tocados** (regra): `Package.swift`, `FFmpegKit/`, `Sources/Lumen/Metal/`, caminho de decode do `KSMEPlayer`.
 
 ### `streamhub-app` — modificados
-`StreamHub/Playback/PlaybackCoordinator.swift`, `StreamHub/Playback/PlaybackProgressStore.swift`, `StreamHub/Playback/NativePlayerView.swift`, `StreamHub/Features/MediaWindow/MediaWindowView.swift`, `StreamHubTests/NativePlaybackSessionTests.swift` (+4 testes Swift Testing). Total: 5 arquivos, +87/−2. `project.pbxproj` intocado (pastas sincronizadas).
+`StreamHub/Playback/PlaybackCoordinator.swift`, `StreamHub/Playback/PlaybackProgressStore.swift`, `StreamHub/Playback/NativePlayerView.swift`, `StreamHub/Features/MediaWindow/MediaWindowView.swift`, `StreamHubTests/NativePlaybackSessionTests.swift` (+4 testes Swift Testing). **Código: 5 arquivos, +87/−2**; documentação interna (plano, este relatório, `ROADMAP.md` do player e 4 arquivos de task): 8 arquivos, +724/−46. Diff completo da branch: **13 arquivos, +811/−48**. `project.pbxproj` intocado (pastas sincronizadas).
 
 ---
 
@@ -175,6 +202,8 @@ Pontos que a análise estática não prova e o compilador vai julgar primeiro:
 - `import Libdovi` a partir do target `Lumen` (é o primeiro binaryTarget não-produto importado dali; o mecanismo transitivo é o mesmo do `Libavcodec`). Se falhar: criar `FFmpegKit/Sources/FFmpegKit/include/dovi_shim.h` com `#import <Libdovi/rpu_parser.h>` e trocar por `import FFmpegKit` — **nunca** mexer no `Package.swift`.
 - `import Libavcodec` nos targets de teste novos (`DOVIPacketRewriterTest`, `ProAVPlaylistTest`) — não há precedente de teste importando módulos do FFmpegKit neste repo.
 - Warnings de `StrictConcurrency` nas closures armazenadas (`PendingMemorySeek`, completions coalescidas da layer).
+- `MemoryLayout<AVDOVIDecoderConfigurationRecord>.size` em `MEPlayerItem.swift` (da rodada extra): o tipo vem de `libavutil/dovi_meta.h`, sob o `umbrella "."` do modulemap do `Libavutil`, e o arquivo já resolve símbolos de libavutil sem import explícito — deve resolver. Se o Xcode reclamar, o conserto é uma linha: `import Libavutil` no topo do arquivo.
+- Os dois testes novos do `DOVIPacketRewriterTest` **executam FFI Rust de verdade** (parse → `get_error` → `rpu_free`). As entradas foram escolhidas para morrer em `validated_trimmed_data` do libdovi (comprimento < 25 e start bytes inválidos); trocá-las por uma RPU sintética "quase válida" reintroduz o risco de um panic do Rust atravessar a fronteira C.
 
 ### 1. Checklist de hardware
 
@@ -207,7 +236,7 @@ Pontos que a análise estática não prova e o compilador vai julgar primeiro:
 
 **Verificações que não foram feitas (entram como pendência, não como entrega):**
 
-4. **Nada foi compilado nem executado.** Os 66 testes do player e os 4 do app foram **escritos**, nunca rodados.
+4. **Nada foi compilado nem executado.** Os 68 testes do player e os 4 do app foram **escritos**, nunca rodados.
 5. **Assimetria do flag JOC entre substreams** (F1) — inconclusivo lendo só o source; precisa de amostra DD+ JOC real ou do texto da ETSI TS 103 420.
 6. **`hvcC` com `array_completeness = 0` sob sample entry `dvh1`** — o `movenc` decide esse bit só por `tag == 'hvc1'`. É não-conformidade formal com a ISO 14496-15 e não é corrigível sem patchear o FFmpeg; impacto no AVFoundation é desconhecido.
 7. **P7 com EL/RPU em trilha separada** nunca foi confrontado com amostra real — com a guarda nova, degrada para o `KSMEPlayer` em vez de publicar DV sem metadata.
@@ -224,13 +253,13 @@ Pontos que a análise estática não prova e o compilador vai julgar primeiro:
 15. O plano mandava "respeitar `isConvertNALSize`" na F4b; o reconhecimento provou que esse flag é exclusivo do decode VideoToolbox (a mutação `0xFE→0xFF` acontece numa cópia local do extradata). O texto do plano foi corrigido in loco; o length size vem do byte 21 do `hvcC`.
 16. O plano dizia que a URL do `KSVideoPlayerView` deveria deixar de ser `@State`; falso — `openURL(_:)` a muta internamente. Corrigido in loco; a propagação virou `requestedURL` + `.task(id:)`.
 
-**Housekeeping do lado do player:** a atualização de `README.md`, `ROADMAP.md` público e `docs/02-camada-avplayer.md` do `lumen-player` (item 2 da F5 do plano) corre em paralelo no outro repo e **não está coberta por este relatório** — conferir antes do push.
+**Housekeeping do lado do player:** feito e **coberto por este relatório** — `README.md`, `ROADMAP.md` público, `docs/README.md` e os docs 01/02/03 do `lumen-player` (item 2 da F5 do plano) estão na mesma `task/agora-kanban`, nos commits `69fab1a`..`0e85a90` da tabela acima. O que resta é a conferência do dono antes do push, com atenção à regra de material público: nenhuma alegação de feature no `README.md` deve ir além do que o código faz.
 
 ---
 
 ## Rodada extra: as duas lentes que tinham caído (2026-07-25)
 
-Duas revisões adversariais previstas no plano não chegaram a rodar na execução original (erro de conexão da API): a lente de **concorrência + núcleo de playback sobre a F3** e a lente de **spec + crash-safety sobre o núcleo do reescritor Dolby Vision (F4)**. Elas rodaram depois, sobre o estado final da branch, e a correção gerou 8 commits novos no `lumen-player` — posteriores à tabela de commits acima (a branch está com 66 commits, não 49).
+Duas revisões adversariais previstas no plano não chegaram a rodar na execução original (erro de conexão da API): a lente de **concorrência + núcleo de playback sobre a F3** e a lente de **spec + crash-safety sobre o núcleo do reescritor Dolby Vision (F4)**. Elas rodaram depois, sobre o estado final da branch já merged, e a correção gerou 8 commits novos no `lumen-player` — as linhas `F3 lente`/`F4 lente` da tabela de commits acima, que fecham a branch em 66 commits.
 
 | Achado | Veredito | Commit |
 |---|---|---|
@@ -255,4 +284,5 @@ Detalhes que valem para a próxima leitura do código:
 **Pendências que esta rodada acrescenta:**
 
 17. **Corrida de shutdown no caminho de rede do seek** (`MEPlayerItem.swift`, ramo do `avformat_seek_file`) — mesma classe do achado corrigido no fast-path, pré-existente à task: a checagem de `.closed` e a escrita de `state = .reading` não são atômicas, então um `shutdown()` no meio pode ressuscitar a read thread e bloquear o `closeOperation` (que depende do `readOperation`) para sempre.
-18. **`startPacket(atOrBefore:)` varre o anel inteiro sob o lock** (`MEPlayerItemTrack.swift`), até 3× por seek (~1,5 k packets com 30 s bufferizados, ~100 µs por varredura com o lock retido). O corte antecipado exige uma margem sobre o alvo — os timestamps estão em ordem de decode e com B-frames o pts desordena — e mexer nisso sem poder medir em hardware não pareceu bom negócio. Fica como otimização anotada, não como bug.
+18. **`startPacket(atOrBefore:)` varre o anel inteiro sob o lock** (`MEPlayerItemTrack.swift`), até 3× por seek (~1,5 k packets com 30 s bufferizados, ~100 µs por varredura com o lock retido). O corte antecipado exige uma margem sobre o alvo — os timestamps estão em ordem de decode e com B-frames o pts desordena — e mexer nisso sem poder medir em hardware não pareceu bom negócio. Fica como otimização anotada, não como bug. **Decisão do dono.**
+19. **A `outputRenderQueue` de A/V passa a ser esvaziada duas vezes num seek elegível** (uma na thread do chamador, outra no `fastSeek`) — consequência do fix `e8b4ba2`. É idempotente e barato, mas é comportamento novo a observar em hardware: se o skip de +10 s passar a mostrar um frame congelado perceptível antes de retomar, o suspeito é a latência entre o pedido e o commit da read thread, não o flush em si.
