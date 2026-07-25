@@ -60,3 +60,25 @@ Não existe investigação dedicada para este item (README lista "Video switchin
 - `docs/02-camada-avplayer.md` e `docs/03-engine-meplayer-demux-e-pipeline.md` (este repositório) — mapas de arquitetura usados como base desta investigação, especialmente as seções "Fluxo de dados" (abertura/troca de URL) e "Pegadinhas" (threading, retain cycle no close, ordem de inicialização do áudio).
 - `context/investigation/precache-data-to-hard-drive.md` (este repositório) — feature relacionada (ausente) que reforçaria o pre-open descrito aqui.
 - `/Users/joaoalves/Developer/streamhub/StreamHub/Playback/PlaybackCoordinator.swift` e `StreamHub/Streams/StreamProfile.swift` — evidência de que hoje o StreamHub delega 100% do playback ao Infuse externo (via `InfuseLauncher.open`) e de como os streams candidatos são resolvidos por perfil (`cinema`/`casual`/`anime`); esta feature pressupõe a migração futura desse fluxo para o player nativo deste fork.
+
+---
+
+## Resultado da execução (2026-07-25) — camadas 1-2 entregues
+
+Seção adicionada na baixa de [[zero-delay]]; a pesquisa acima fica como estava. Detalhe completo em [../exec/agora-resultado-2026-07-25.md](../exec/agora-resultado-2026-07-25.md).
+
+**O que foi entregue** (branch `task/agora-kanban`, lane `lane/f2-zero-delay`): requisitos `switchSource(url:options:completion:)` e `cancelSourceSwitch()` no `MediaPlayerProtocol`, com implementação default que **devolve `completion(false)` sem efeito colateral** — quem faz o restart frio é a `KSPlayerLayer`, via `set(url:options:)`. Hot swap real no `KSAVPlayer` (candidato por `AVQueuePlayer.insert(_:after:)`, observação de `status`, timeout de 10 s, validação de faixa de vídeo tocável antes do `advanceToNextItem()`) e no `ProAVPlayer` (launch de remux paralelo, sem derrubar servidor nem inner player). Opt-in por `KSOptions.isSourceSwitchEnabled` (default `false`). No app: `switchNativeSource` preservando o `id` da sessão, migração do registro de progresso e roteamento por `contentKey`.
+
+**Confirmações da pesquisa:**
+- A hipótese central — usar `AVQueuePlayer.insert(_:after:)` para pré-rolar o candidato e commitar com `advanceToNextItem()` — funciona e é barata no caminho HLS local do ProAVPlayer, como previsto.
+- O `KSPlayerLayer` de fato precisava de um caminho "switch sem stop": commitar a URL com o `didSet` suprimido e **sem** passar por `.preparing`.
+
+**Correções que a pesquisa não previu:**
+- `.preparing` é o **único** ponto que limpa `playbackError`/spinner na `KSVideoPlayerView`. Por isso um cold path disfarçado de sucesso (`completion(true)` depois de um teardown real) deixa o card de erro da fonte anterior por cima do vídeo novo — daí a regra "engine que não resolve a quente devolve `false`".
+- O `AVQueuePlayer` promovido **não** dispara `readyToPlay` de novo (o `didSet` de `isReadyToPlay` só notifica na mudança), então nada restaura a posição sozinho: foi preciso `seek` explícito após a promoção.
+- O ciclo de vida do candidato é tocado por duas filas (KVO de `status` em thread arbitrária + main queue do timeout/cancel) — exigiu serialização com `NSLock` + hop para a main.
+- No app, o predicado "mesma sessão do mesmo título" dava falso positivo entre episódios diferentes da mesma série (a sessão de episódio carrega o título da série). Trocado por `contentKey`.
+
+**Medições/limites descobertos:** a troca no caminho ProAV **rebobina pela latência do remux** (o `startOffset` é congelado no pedido e o commit só acontece com 2 segmentos prontos: 1-5 s na prática). Fechar isso é decisão de produto — margem preditiva arrisca pular conteúdo; recomputar no commit implica reiniciar o remux.
+
+**O que continua aberto:** camadas 3/4 (hot swap no motor `KSMEPlayer` + handoff de áudio) e o prewarm especulativo de candidatos (item 8 do design, **sem seção de pesquisa neste doc** — escrever antes de executar). E o bloqueio de validação: com sessão nativa ativa o seletor de fontes do app está sob `.disabled`, então o aceite não é exercitável ponta a ponta.

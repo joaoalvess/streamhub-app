@@ -77,3 +77,22 @@ Passo a passo confirmado pela comunidade (citações da issue):
 - swhitty/FlyingFox — https://github.com/swhitty/FlyingFox (alternativa moderna de servidor HTTP em Swift Concurrency, SPM nativo, tvOS 13+ — candidato não testado neste contexto).
 - `context/investigation/proavplayer-mkv-com-dolby-vision-e-atmos-nativos-via-avplaye.md` (este repositório) — investigação de ausência que originou este roadmap.
 - `context/investigation/native-dolby-vision-dynamic-metadata-p5-p8-p7-single-layer.md`, `context/investigation/hdr10-dynamic-metadata.md`, `context/investigation/record-video.md`, `context/investigation/ffmpeg-version-bundled.md` (este repositório) — bases técnicas e dependências cruzadas usadas neste roadmap.
+
+---
+
+## Resultado da execução (2026-07-25) — [[atmos-dec3]] entregue
+
+Seção adicionada na baixa da task; a pesquisa acima fica como estava. Detalhe completo em [../exec/agora-resultado-2026-07-25.md](../exec/agora-resultado-2026-07-25.md). A conversão de RPU está registrada em [native-dolby-vision-dynamic-metadata-p5-p8-p7-single-layer.md](native-dolby-vision-dynamic-metadata-p5-p8-p7-single-layer.md).
+
+**Premissa da pesquisa refutada:** não bastava subir para o FFmpeg 8.x e "absorver o case `copyAwaitingFFmpeg8AtmosDEC3`". O `mov_write_eac3_tag` do `movenc` **recusa escrever o `dec3` antes de ter parseado packets E-AC-3** (`"Cannot write moov atom before EAC3 packets parsed"`), e o remux emitia o `moov` no `avformat_write_header`, com `+empty_moov` e sem `+delay_moov` — ou seja, o header já falhava (ou saía sem a extensão type_a) para toda trilha E-AC-3 em copy.
+
+**O que foi entregue** (branch `task/agora-kanban`):
+- `movflags` com **`+delay_moov`**: o `moov` passa a sair no primeiro corte de fragmento, quando o muxer já parseou o header do áudio.
+- **`use_editlist=0`** junto: sem ele o `+delay_moov` desliga silenciosamente o rebase de timestamps para zero do `movenc` e passa a escrever `edts`/`elst` — e o `ProAVPlayer` soma `startOffset` por cima, o que dobraria a posição depois de um seek.
+- **Nova fronteira do `init.mp4`**: `ProAVInitBoundaryScanner` (box-walk ISOBMFF com `largesize` e teto de buffer) corta o init segment no primeiro `moof`, em vez de no `write_header`.
+- **Gate de header parseado**: a trilha AC-3/E-AC-3 só libera o primeiro flush depois de um packet começando com o syncword `0x0B77`; sem isso a sessão falha explicitamente e cai no `KSMEPlayer`, em vez de escrever um `moov` truncado em silêncio.
+- Detecção de JOC por `codecpar.profile == AV_PROFILE_EAC3_DDP_ATMOS` e `CHANNELS="16/JOC"` num `#EXT-X-MEDIA` (rendition muxada, sem `URI`) referenciado por `AUDIO="main"`. Quando a contagem de canais é desconhecida o atributo é **omitido** (emitir `CHANNELS="0"` seria pior).
+
+**Bug lateral encontrado e corrigido:** `startProAVRemux` mapeava o stream de `preferredAudioTrackID`, mas `createCodec` deixava todos os streams em `AVDISCARD_ALL` menos o escolhido por `av_find_best_stream` — depois de uma troca de faixa de áudio, o stream mapeado nunca produzia packet.
+
+**Inconclusivo, precisa de amostra:** o muxer lê `complexity_index_type_a` do **primeiro** header do packet (substream independente), enquanto `codecpar.profile` termina com o valor do **último** header parseado pelo decoder (o dependente, quando existe). Se divergirem num DD+ JOC real, a playlist pode anunciar `16/JOC` com um `dec3` sem o flag. É exatamente isso que a inspeção do `dec3` no aceite precisa desempatar.

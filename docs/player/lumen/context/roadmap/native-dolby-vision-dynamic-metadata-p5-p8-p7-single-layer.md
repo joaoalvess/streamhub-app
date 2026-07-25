@@ -81,3 +81,23 @@ Este Fase 0 não é "dynamic metadata" strictamente — é a pré-condição de 
 - mpv-player/mpv, issue #9982 — "Q: Dolby Vision to SDR" (confirma tratamento por perfil: 5/8/9 com metadata, 7 cai em fallback genérico) — https://github.com/mpv-player/mpv/issues/9982
 - libplacebo (VideoLAN), release notes v5.264.0 — integração com `libdovi` para parsing de RPU, uso do RPU só como estatística ST2086 para tone-mapping próprio — https://code.videolan.org/videolan/libplacebo/-/tags/v5.264.0
 - AVS Forum, "Apple Dolby Vision" — discussão da comunidade confirmando que Apple não decodifica P7 dual-layer nativamente — https://www.avsforum.com/threads/apple-dolby-vision.3252865/
+
+---
+
+## Resultado da execução (2026-07-25) — [[dv-nativo]] entregue (código)
+
+Seção adicionada na baixa da task; a pesquisa acima fica como estava. Detalhe completo em [../exec/agora-resultado-2026-07-25.md](../exec/agora-resultado-2026-07-25.md).
+
+**Passthrough P5/P8.1: zero linha de código.** O reconhecimento contra o source do FFmpeg n8.1.2 mostrou que o `movenc` escreve `dvcC`/`dvvC` sob exatamente três condições, todas já satisfeitas desde o [[proavplayer]]: `track->mode == MODE_MP4` (muxer `mp4`), presença de `AV_PKT_DATA_DOVI_CONF` no `coded_side_data` do codecpar de **saída** (propagado por `avcodec_parameters_copy`) e `strict_std_compliance <= FF_COMPLIANCE_UNOFFICIAL` (o remux usa `-2`). O `codec_tag` `dvh1` **não** participa dessa decisão. Ou seja: a fase 1 da pesquisa já estava entregue sem que se soubesse — o que falta é validação de hardware.
+
+**Correção factual importante para o aceite:** o nome da box depende do perfil — `dv_profile > 7` gera **`dvvC`**, não `dvcC`. Como a saída convertida é perfil 8, qualquer inspeção (`mp4box -diso init.mp4`) tem que procurar `dvvC`. Procurar `dvcC` dá falso negativo.
+
+**P7 → P8.1 entregue** via `DOVIPacketRewriter.swift` (novo): walker de NALs length-prefixed (length size lido do byte 21 do `hvcC`), **drop do NAL type 63** (enhancement layer) e conversão do NAL type 62 (RPU) com `dovi_parse_unspec62_nalu` → `dovi_convert_rpu_with_mode(_, 2)` → `dovi_write_unspec62_nalu` do **Libdovi 3.3.2 já vendorizado**. O registro DOVI do codecpar de saída é sobrescrito com `dv_profile=8`, `dv_bl_signal_compatibility_id=1`, `el_present_flag=0`.
+
+**O risco "L→XL" da pesquisa não se materializou:** o Libdovi **cuida sozinho** do emulation prevention e recomputa o CRC32 no `write`, e o buffer devolvido já vem com o header `0x7C01` — não é preciso reserializar bitstream à mão. A dificuldade real ficou no walker/ownership, não na criptaritmética do RPU.
+
+**Limites descobertos:**
+- P7 vindo de **MPEG-TS** (extradata Annex-B) é recusado por design: nesse container os packets não são length-prefixed (o próprio `movenc` os converte depois), então o walker não se aplica.
+- P7 **dual-track** (RPU numa trilha EL que o remux não mapeia) sairia anunciado como DV 8.1 sem metadata nenhuma — daí a guarda que falha a sessão se nenhuma RPU for convertida até o primeiro fragmento. Nunca confrontado com amostra real.
+- Foi usado o **mode 2** (curvas luma/chroma em no-op, padrão `dovi_tool -m 2`); o **mode 4** preserva o mapping e é a alternativa se a validação de FEL mostrar desvio de cor.
+- Não corrigível daqui: com sample entry `dvh1`, o `movenc` escreve `hvcC` com `array_completeness = 0` (ele decide esse bit só por `tag == 'hvc1'`). É não-conformidade formal com a ISO 14496-15; impacto no AVFoundation desconhecido.

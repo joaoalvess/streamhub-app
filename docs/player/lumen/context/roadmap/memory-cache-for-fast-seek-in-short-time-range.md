@@ -68,3 +68,24 @@ Não há investigação própria em `context/investigation/` para este item — 
 - `context/roadmap/video-switching-with-zero-delay.md` e `context/roadmap/progressbar-preview.md` (este repositório) — roadmaps irmãos com a mesma preocupação de fundo (custo de I/O extra contra endpoint HTTP de debrid) e o mesmo padrão de proposta em camadas incrementais.
 - `context/investigation/precache-data-to-hard-drive.md` (este repositório) — investigação de ausência de qualquer cache em disco no fork, usada aqui para diferenciar escopo (RAM/curto prazo vs. disco/longo prazo).
 - `/Users/joaoalves/Developer/streamhub/StreamHub/Playback/PlaybackCoordinator.swift` — evidência de que o StreamHub ainda delega 100% do playback ao Infuse externo, base da dependência estrutural listada acima.
+
+---
+
+## Resultado da execução (2026-07-25) — camada 1 entregue
+
+Seção adicionada na baixa de [[seek-ram]]; a pesquisa acima fica como estava. Detalhe completo em [../exec/agora-resultado-2026-07-25.md](../exec/agora-resultado-2026-07-25.md).
+
+**O que foi entregue** (branch `task/agora-kanban`, lane `lane/f3-seek-ram`): seek **para frente** dentro da janela de packets já bufferizada é servido da RAM, sem `avformat_seek_file` e sem tocar rede. `CircularBuffer` ganhou `peekEdges()`, `scan(_:)`, `drain(upTo:)` e `wakeup()` (todos `internal`, sobre a `NSCondition` que já existia — nenhum lock novo, conforme docs/03). `AsyncPlayerItemTrack` ganhou `fastSeek`/`performMemorySeek`. Opção `KSOptions.isMemorySeekEnabled` (default ligado) e logs de hit/miss.
+
+**Confirmações da pesquisa:**
+- Reaproveitar o accurate-seek existente foi o suficiente para o frame certo: `fastSeek` grava `seekTime` sob o `seekTimeLock` e o descarte de frames pré-alvo no callback de decode já era incondicional.
+- A janela útil real é a que a pesquisa estimava (~30 s de packets), e a decisão cabe no ramo `.seeking` do `readThread`, antes do seek de rede.
+
+**Correções que a pesquisa não previu:**
+- A decode thread **não é a única consumidora** da fila de packets de vídeo: a render thread também popa por `dropNextPacket`/`dropGOPPacket`. Consequência de projeto: a drenagem precisa ser **por identidade** (`drain(upTo:)`, numa única seção crítica) — descartar por contagem corrompe a fila num flush concorrente. **Isso vale integralmente para a camada 2.**
+- Decidir na read thread e drenar na decode thread cria uma janela em que o seek pode ser reportado como concluído antes de existir: o commit passou a esperar a confirmação das trilhas (deadline de 0,5 s) e a publicação do pending passou a acordar um consumidor parado em `pop(wait:)`.
+- Packets sem `pts` **e** sem `dts` (`AV_NOPTS_VALUE` nos dois) produziam uma janela fictícia e podiam estourar a conversão por timebase — a cobertura passou a rejeitá-los antes de qualquer conversão.
+- Suprimir o flush das trilhas na thread do chamador só é seguro quando o fast-path é de fato elegível: com `syncDecodeVideo/Audio` esse flush é o único despertador da read thread, e para seek para trás ele é o que silencia o áudio antigo na hora.
+- Trilhas que não participam do dreno (legendas) precisam continuar sendo flushadas no fast-path.
+
+**O que continua aberto:** camada 2 (anel de retenção para trás — task própria no kanban). Constante nova sem validação em hardware: o deadline de 0,5 s da confirmação do dreno. Custo do teste de elegibilidade na thread do chamador (scan linear por trilha, ~100 µs estimados) ainda não medido em Apple TV.

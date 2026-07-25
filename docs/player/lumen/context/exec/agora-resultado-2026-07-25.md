@@ -131,7 +131,7 @@ Higiene conferida: todos os commits têm o dono como autor, **nenhum trailer**, 
 - `Tests/LumenTests/`: `ProAVInitBoundaryScannerTest.swift` (9), `ProAVPlaylistTest.swift` (13), `SourceSwitchTest.swift` (6), `MemorySeekTests.swift` (23), `DOVIPacketRewriterTest.swift` (15) — **66 testes XCTest novos, nenhum executado**.
 
 ### `lumen-player` — modificados
-`MEPlayerItem.swift` (remux: movflags, gate de header, fronteira do init, reescrita DOVI, override do side data; seek: fast-path em RAM), `MEPlayerItemTrack.swift`, `CircularBuffer.swift`, `ProAVPlaylist.swift`, `ProAVRemuxSession.swift`, `ProAVPlayer.swift`, `KSAVPlayer.swift`, `KSPlayerLayer.swift`, `KSVideoPlayer.swift`, `MediaPlayerProtocol.swift`, `KSVideoPlayerView.swift`, `KSOptions.swift`, `docs/03-engine-meplayer-demux-e-pipeline.md`. Total: 20 arquivos, +2178/−76.
+`MEPlayerItem.swift` (remux: movflags, gate de header, fronteira do init, reescrita DOVI, override do side data; seek: fast-path em RAM), `MEPlayerItemTrack.swift`, `CircularBuffer.swift`, `ProAVPlaylist.swift`, `ProAVRemuxSession.swift`, `ProAVPlayer.swift`, `KSAVPlayer.swift`, `KSPlayerLayer.swift`, `KSVideoPlayer.swift`, `MediaPlayerProtocol.swift`, `KSVideoPlayerView.swift`, `KSOptions.swift`, `docs/03-engine-meplayer-demux-e-pipeline.md`. Diff completo da branch (novos + modificados): 20 arquivos, +2178/−76.
 
 **Não tocados** (regra): `Package.swift`, `FFmpegKit/`, `Sources/Lumen/Metal/`, caminho de decode do `KSMEPlayer`.
 
