@@ -59,6 +59,28 @@ struct JellyfinRequestTests {
         #expect(url.absoluteString == "https://jellyfin.example/UserItems/Resume?userId=user1&mediaTypes=Video")
     }
 
+    @Test func buildsSearchQuery() {
+        let query = JellyfinAPI.searchQuery(userId: "user1", term: "matrix", limit: 60)
+        #expect(query.contains(URLQueryItem(name: "userId", value: "user1")))
+        #expect(query.contains(URLQueryItem(name: "searchTerm", value: "matrix")))
+        #expect(query.contains(URLQueryItem(name: "recursive", value: "true")))
+        #expect(query.contains(URLQueryItem(name: "mediaTypes", value: "Video")))
+        #expect(query.contains(URLQueryItem(name: "sortBy", value: "SortName")))
+        #expect(query.contains(URLQueryItem(name: "limit", value: "60")))
+        #expect(query.contains(URLQueryItem(name: "fields", value: "MediaStreams")))
+    }
+
+    @Test func buildsPageQuery() {
+        let query = JellyfinAPI.pageQuery(userId: "user1", startIndex: 200, limit: 100)
+        #expect(query.contains(URLQueryItem(name: "userId", value: "user1")))
+        #expect(query.contains(URLQueryItem(name: "recursive", value: "true")))
+        #expect(query.contains(URLQueryItem(name: "sortBy", value: "SortName")))
+        #expect(query.contains(URLQueryItem(name: "sortOrder", value: "Ascending")))
+        #expect(query.contains(URLQueryItem(name: "startIndex", value: "200")))
+        #expect(query.contains(URLQueryItem(name: "limit", value: "100")))
+        #expect(query.contains(URLQueryItem(name: "fields", value: "MediaStreams")))
+    }
+
     @Test func playbackEventPathsAreCanonical() {
         #expect(JellyfinPlaybackEvent.start.path == "/Sessions/Playing")
         #expect(JellyfinPlaybackEvent.progress.path == "/Sessions/Playing/Progress")

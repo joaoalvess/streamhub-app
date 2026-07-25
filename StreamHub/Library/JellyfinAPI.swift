@@ -35,7 +35,8 @@ nonisolated struct JellyfinAPI {
                 query: [
                     URLQueryItem(name: "userId", value: context.userId),
                     URLQueryItem(name: "limit", value: String(limit)),
-                    URLQueryItem(name: "mediaTypes", value: "Video")
+                    URLQueryItem(name: "mediaTypes", value: "Video"),
+                    URLQueryItem(name: "fields", value: "MediaStreams")
                 ],
                 context: context
             )
@@ -49,7 +50,8 @@ nonisolated struct JellyfinAPI {
                 path: "/Items/Latest",
                 query: [
                     URLQueryItem(name: "userId", value: context.userId),
-                    URLQueryItem(name: "limit", value: String(limit))
+                    URLQueryItem(name: "limit", value: String(limit)),
+                    URLQueryItem(name: "fields", value: "MediaStreams")
                 ],
                 context: context
             )
@@ -68,12 +70,61 @@ nonisolated struct JellyfinAPI {
                     URLQueryItem(name: "sortBy", value: "DateCreated"),
                     URLQueryItem(name: "sortOrder", value: "Descending"),
                     URLQueryItem(name: "startIndex", value: "0"),
-                    URLQueryItem(name: "limit", value: String(limit))
+                    URLQueryItem(name: "limit", value: String(limit)),
+                    URLQueryItem(name: "fields", value: "MediaStreams")
                 ],
                 context: context
             )
             return result.items
         }
+    }
+
+    func search(term: String, limit: Int) async throws -> [JellyfinItem] {
+        try await withAuthRetry { context in
+            let result: JellyfinQueryResult = try await get(
+                path: "/Items",
+                query: Self.searchQuery(userId: context.userId, term: term, limit: limit),
+                context: context
+            )
+            return result.items
+        }
+    }
+
+    func allItems(startIndex: Int, limit: Int) async throws -> (items: [JellyfinItem], total: Int) {
+        try await withAuthRetry { context in
+            let result: JellyfinQueryResult = try await get(
+                path: "/Items",
+                query: Self.pageQuery(userId: context.userId, startIndex: startIndex, limit: limit),
+                context: context
+            )
+            return (result.items, result.totalRecordCount ?? result.items.count)
+        }
+    }
+
+    nonisolated static func searchQuery(userId: String, term: String, limit: Int) -> [URLQueryItem] {
+        [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "searchTerm", value: term),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "mediaTypes", value: "Video"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
+            URLQueryItem(name: "sortOrder", value: "Ascending"),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "fields", value: "MediaStreams")
+        ]
+    }
+
+    nonisolated static func pageQuery(userId: String, startIndex: Int, limit: Int) -> [URLQueryItem] {
+        [
+            URLQueryItem(name: "userId", value: userId),
+            URLQueryItem(name: "recursive", value: "true"),
+            URLQueryItem(name: "mediaTypes", value: "Video"),
+            URLQueryItem(name: "sortBy", value: "SortName"),
+            URLQueryItem(name: "sortOrder", value: "Ascending"),
+            URLQueryItem(name: "startIndex", value: String(startIndex)),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "fields", value: "MediaStreams")
+        ]
     }
 
     func streamURL(itemId: String) async throws -> URL {

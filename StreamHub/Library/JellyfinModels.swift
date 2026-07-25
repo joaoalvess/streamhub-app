@@ -32,9 +32,23 @@ nonisolated struct JellyfinAuthUser: Decodable, Sendable {
 
 nonisolated struct JellyfinQueryResult: Decodable, Sendable {
     let items: [JellyfinItem]
+    let totalRecordCount: Int?
 
     enum CodingKeys: String, CodingKey {
         case items = "Items"
+        case totalRecordCount = "TotalRecordCount"
+    }
+}
+
+nonisolated struct JellyfinMediaStream: Decodable, Sendable {
+    let type: String?
+    let height: Int?
+    let language: String?
+
+    enum CodingKeys: String, CodingKey {
+        case type = "Type"
+        case height = "Height"
+        case language = "Language"
     }
 }
 
@@ -47,6 +61,7 @@ nonisolated struct JellyfinItem: Decodable, Sendable, Identifiable {
     let imageTags: [String: String]?
     let backdropImageTags: [String]?
     let userData: JellyfinUserData?
+    let mediaStreams: [JellyfinMediaStream]?
 
     enum CodingKeys: String, CodingKey {
         case id = "Id"
@@ -57,6 +72,7 @@ nonisolated struct JellyfinItem: Decodable, Sendable, Identifiable {
         case imageTags = "ImageTags"
         case backdropImageTags = "BackdropImageTags"
         case userData = "UserData"
+        case mediaStreams = "MediaStreams"
     }
 }
 

@@ -67,6 +67,36 @@ struct JellyfinModelsTests {
         #expect(item.productionYear == nil)
     }
 
+    @Test func decodesMediaStreamsAndTotalCount() throws {
+        let json = Data(#"""
+        {
+          "Items": [
+            {
+              "Id": "item-1",
+              "Name": "Some Movie",
+              "Type": "Movie",
+              "MediaStreams": [
+                { "Type": "Video", "Codec": "hevc", "Height": 2160 },
+                { "Type": "Audio", "Codec": "eac3", "Language": "por" },
+                { "Type": "Subtitle", "Codec": "ass", "Language": "por" }
+              ]
+            }
+          ],
+          "TotalRecordCount": 1240,
+          "StartIndex": 100
+        }
+        """#.utf8)
+        let result = try JSONDecoder().decode(JellyfinQueryResult.self, from: json)
+        #expect(result.totalRecordCount == 1240)
+        let item = try #require(result.items.first)
+        let streams = try #require(item.mediaStreams)
+        #expect(streams.count == 3)
+        #expect(streams[0].type == "Video")
+        #expect(streams[0].height == 2160)
+        #expect(streams[1].language == "por")
+        #expect(streams[2].type == "Subtitle")
+    }
+
     @Test func convertsTicksBothWays() {
         #expect(JellyfinTicks.seconds(901_370_000) == 90)
         #expect(JellyfinTicks.ticks(seconds: 90) == 900_000_000)
