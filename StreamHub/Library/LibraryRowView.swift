@@ -49,6 +49,7 @@ private struct LibraryCardLabel: View {
         poster
             .frame(width: Theme.Size.posterWidth, height: Theme.Size.posterHeight)
             .overlay { Theme.genreScrim.opacity(isFocused && entry.posterURL != nil ? 1 : 0) }
+            .overlay(alignment: .topLeading) { badges }
             .overlay(alignment: .bottom) { footer }
             .animation(.easeInOut(duration: 0.2), value: isFocused)
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
@@ -97,13 +98,35 @@ private struct LibraryCardLabel: View {
         }
     }
 
+    private var badges: some View {
+        HStack(spacing: 6) {
+            if let label = entry.resolutionLabel {
+                badge(label)
+            }
+            if let label = entry.audioLabel {
+                badge(label)
+            }
+        }
+        .padding(8)
+    }
+
+    private func badge(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.Font.badge)
+            .foregroundStyle(Theme.textPrimary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.black.opacity(0.65), in: Capsule())
+    }
+
     private var footer: some View {
         VStack(spacing: 10) {
             if entry.posterURL != nil {
                 Text(entry.name)
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal, 14)
                     .opacity(isFocused ? 1 : 0)
             }
