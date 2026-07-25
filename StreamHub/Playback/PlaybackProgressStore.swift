@@ -184,6 +184,12 @@ final class PlaybackProgressStore {
         persistSessions()
     }
 
+    func migrateSession(videoURL: String, to newVideoURL: String) {
+        guard newVideoURL != videoURL, let record = sessions.removeValue(forKey: videoURL) else { return }
+        sessions[newVideoURL] = record
+        persistSessions()
+    }
+
     func applyCallback(lastPlayedURL: String, position: Int) {
         guard let record = sessions.removeValue(forKey: lastPlayedURL) else { return }
         var entry = record.entry
