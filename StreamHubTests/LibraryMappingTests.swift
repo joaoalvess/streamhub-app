@@ -12,7 +12,8 @@ struct LibraryMappingTests {
         positionTicks: Int64? = nil,
         playedPercentage: Double? = nil,
         primaryTag: String? = "tag-p",
-        backdropTags: [String]? = ["tag-b"]
+        backdropTags: [String]? = ["tag-b"],
+        streams: [JellyfinMediaStream]? = nil
     ) -> JellyfinItem {
         JellyfinItem(
             id: id,
@@ -26,8 +27,13 @@ struct LibraryMappingTests {
                 playbackPositionTicks: positionTicks,
                 playedPercentage: playedPercentage,
                 played: false
-            )
+            ),
+            mediaStreams: streams
         )
+    }
+
+    private func makeStream(type: String, height: Int? = nil, language: String? = nil) -> JellyfinMediaStream {
+        JellyfinMediaStream(type: type, height: height, language: language)
     }
 
     @Test func mapsEntryWithImagesAndProgress() throws {
@@ -72,6 +78,68 @@ struct LibraryMappingTests {
             base: nil
         )
         #expect(entry.startSeconds == 90)
+    }
+
+    @Test func derives4KAndDualAudioBadges() {
+        let streams = [
+            makeStream(type: "Video", height: 2160),
+            makeStream(type: "Audio", language: "por"),
+            makeStream(type: "Audio", language: "jpn")
+        ]
+        let entry = LibraryEntry(item: makeItem(streams: streams), base: nil)
+        #expect(entry.resolutionLabel == "4K")
+        #expect(entry.audioLabel == "DUAL")
+    }
+
+    @Test func labelsPortugueseOnlyAudioAsDub() {
+        let streams = [
+            makeStream(type: "Video", height: 1080),
+            makeStream(type: "Audio", language: "por")
+        ]
+        let entry = LibraryEntry(item: makeItem(streams: streams), base: nil)
+        #expect(entry.resolutionLabel == "1080p")
+        #expect(entry.audioLabel == "DUB")
+    }
+
+    @Test func labelsPortugueseSubtitleAsLeg() {
+        let streams = [
+            makeStream(type: "Video", height: 720),
+            makeStream(type: "Audio", language: "eng"),
+            makeStream(type: "Subtitle", language: "por")
+        ]
+        let entry = LibraryEntry(item: makeItem(streams: streams), base: nil)
+        #expect(entry.resolutionLabel == "720p")
+        #expect(entry.audioLabel == "LEG")
+    }
+
+    @Test func lowResolutionFallsBackToSD() {
+        let streams = [makeStream(type: "Video", height: 480)]
+        let entry = LibraryEntry(item: makeItem(streams: streams), base: nil)
+        #expect(entry.resolutionLabel == "SD")
+        #expect(entry.audioLabel == nil)
+    }
+
+    @Test func missingStreamsYieldNoBadges() {
+        let entry = LibraryEntry(item: makeItem(), base: nil)
+        #expect(entry.resolutionLabel == nil)
+        #expect(entry.audioLabel == nil)
+    }
+
+    @Test func ptBRVariantsCountAsPortuguese() {
+        #expect(LibraryEntry.isPortuguese("pob"))
+        #expect(LibraryEntry.isPortuguese("pt-BR"))
+        #expect(LibraryEntry.isPortuguese("Portuguese"))
+        #expect(LibraryEntry.isPortuguese("jpn") == false)
+    }
+
+    @Test func dedupesByFoldedNameAndYear() {
+        let entries = [
+            LibraryEntry(item: makeItem(id: "a", name: "Estação Central", year: 1998), base: nil),
+            LibraryEntry(item: makeItem(id: "b", name: "estacao central", year: 1998), base: nil),
+            LibraryEntry(item: makeItem(id: "c", name: "Estação Central", year: 2020), base: nil)
+        ]
+        let deduped = LibraryViewModel.dedupedByTitle(entries)
+        #expect(deduped.map(\.id) == ["a", "c"])
     }
 
     @Test func buildsSessionMetadataFromEntry() throws {

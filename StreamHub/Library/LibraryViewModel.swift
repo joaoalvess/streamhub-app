@@ -10,6 +10,8 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
     let progress: Double?
     let posterURL: URL?
     let backdropURL: URL?
+    let resolutionLabel: String?
+    let audioLabel: String?
 
     init(item: JellyfinItem, base: URL?) {
         id = item.id
@@ -32,6 +34,36 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
         } else {
             backdropURL = nil
         }
+        resolutionLabel = Self.resolutionBadge(streams: item.mediaStreams)
+        audioLabel = Self.audioBadge(streams: item.mediaStreams)
+    }
+
+    nonisolated static func resolutionBadge(streams: [JellyfinMediaStream]?) -> String? {
+        let heights = (streams ?? []).compactMap { $0.type == "Video" ? $0.height : nil }
+        guard let height = heights.max(), height > 0 else { return nil }
+        if height >= 2000 { return "4K" }
+        if height >= 1000 { return "1080p" }
+        if height >= 690 { return "720p" }
+        return "SD"
+    }
+
+    nonisolated static func audioBadge(streams: [JellyfinMediaStream]?) -> String? {
+        guard let streams else { return nil }
+        let audioLanguages = streams.filter { $0.type == "Audio" }.compactMap(\.language)
+        let hasPortugueseAudio = audioLanguages.contains(where: Self.isPortuguese)
+        let hasForeignAudio = audioLanguages.contains { Self.isPortuguese($0) == false }
+        if hasPortugueseAudio && hasForeignAudio { return "DUAL" }
+        if hasPortugueseAudio { return "DUB" }
+        let hasPortugueseSubtitle = streams.contains {
+            $0.type == "Subtitle" && ($0.language.map(Self.isPortuguese) ?? false)
+        }
+        if hasPortugueseSubtitle { return "LEG" }
+        return nil
+    }
+
+    nonisolated static func isPortuguese(_ language: String) -> Bool {
+        let lowercased = language.lowercased()
+        return lowercased.hasPrefix("por") || lowercased.hasPrefix("pob") || lowercased.hasPrefix("pt")
     }
 
     var startSeconds: Int? {
@@ -134,7 +166,7 @@ final class LibraryViewModel {
                     entries: resumeEntries
                 ))
             }
-            let latestEntries = await latestTask.value.map { LibraryEntry(item: $0, base: base) }
+            let latestEntries = Self.dedupedByTitle(await latestTask.value.map { LibraryEntry(item: $0, base: base) })
             if !latestEntries.isEmpty {
                 loaded.append(LibraryRow(
                     id: "latest",
@@ -176,12 +208,16 @@ final class LibraryViewModel {
         }
     }
 
-    func streamURL(for entry: LibraryEntry) async throws -> URL {
-        try await api.streamURL(itemId: entry.id)
-    }
-
-    func makeReporter(coordinator: PlaybackCoordinator) -> JellyfinPlaybackReporter {
-        JellyfinPlaybackReporter(api: api, coordinator: coordinator)
+    nonisolated static func dedupedByTitle(_ entries: [LibraryEntry]) -> [LibraryEntry] {
+        var seen: Set<String> = []
+        return entries.filter { entry in
+            let name = entry.name.folding(
+                options: [.diacriticInsensitive, .caseInsensitive],
+                locale: Locale(identifier: "pt_BR")
+            )
+            let key = "\(name)|\(entry.year.map(String.init) ?? "")"
+            return seen.insert(key).inserted
+        }
     }
 
     nonisolated static func message(for error: any Error) -> String {
