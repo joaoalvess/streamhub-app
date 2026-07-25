@@ -35,6 +35,7 @@ struct NativePlayerView: View {
 
     private static func makeOptions(session: NativePlaybackSession) -> KSOptions {
         let options = KSOptions()
+        options.isSourceSwitchEnabled = true
         if let start = session.startSeconds {
             options.startPlayTime = TimeInterval(start)
         }

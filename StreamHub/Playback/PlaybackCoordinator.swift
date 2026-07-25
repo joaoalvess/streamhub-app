@@ -50,7 +50,7 @@ nonisolated struct NativeSessionMetadata: Equatable {
 
 nonisolated struct NativePlaybackSession: Identifiable, Equatable {
     let id = UUID()
-    let videoURL: URL
+    var videoURL: URL
     let title: String
     let startSeconds: Int?
     var metadata: NativeSessionMetadata?
@@ -227,6 +227,16 @@ final class PlaybackCoordinator {
         nativePosition = nil
         nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, startSeconds: position, metadata: metadata)
         state = .idle
+    }
+
+    func switchNativeSource(videoURL: URL) {
+        guard var session = nativeSession, session.videoURL != videoURL else { return }
+        progressStore.migrateSession(
+            videoURL: session.videoURL.absoluteString,
+            to: videoURL.absoluteString
+        )
+        session.videoURL = videoURL
+        nativeSession = session
     }
 
     func updateNativePosition(_ seconds: Int) {

@@ -451,6 +451,10 @@ struct MediaWindowView: View {
         focus = .mode
         guard let coordinator, let target = sourcesTarget else { return }
         sourcesTarget = nil
+        if coordinator.nativeSession?.title == item.title, let videoURL = stream.playbackURL {
+            coordinator.switchNativeSource(videoURL: videoURL)
+            return
+        }
         start(target, item: item, coordinator: coordinator, preferredStream: stream)
     }
 
