@@ -160,6 +160,22 @@ struct NativePlaybackSessionTests {
         #expect(switched.title == original.title)
     }
 
+    @Test func startKeepsContentKeyForSourceRouting() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(
+            videoURL: try videoURL(),
+            title: "Breaking Bad",
+            position: nil,
+            entry: entry(),
+            contentKey: "tt0903747:1:2"
+        )
+        let newURL = try #require(URL(string: "https://cdn/b.mkv"))
+        coordinator.switchNativeSource(videoURL: newURL)
+
+        let switched = try #require(coordinator.nativeSession)
+        #expect(switched.contentKey == "tt0903747:1:2")
+    }
+
     @Test func completeAfterSwitchAppliesPositionToMigratedSession() throws {
         let coordinator = try makeCoordinator()
         coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
