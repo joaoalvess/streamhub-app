@@ -52,6 +52,7 @@ nonisolated struct NativePlaybackSession: Identifiable, Equatable {
     let id = UUID()
     var videoURL: URL
     let title: String
+    let contentKey: String?
     let startSeconds: Int?
     var metadata: NativeSessionMetadata?
 }
@@ -215,6 +216,7 @@ final class PlaybackCoordinator {
         position: Int?,
         entry: ResumeEntry?,
         episodeContext: EpisodeSessionContext? = nil,
+        contentKey: String? = nil,
         metadata: NativeSessionMetadata? = nil
     ) {
         if let entry {
@@ -225,7 +227,7 @@ final class PlaybackCoordinator {
             )
         }
         nativePosition = nil
-        nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, startSeconds: position, metadata: metadata)
+        nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, contentKey: contentKey, startSeconds: position, metadata: metadata)
         state = .idle
     }
 
@@ -335,6 +337,7 @@ final class PlaybackCoordinator {
                 title: item.title,
                 position: position,
                 entry: entry,
+                contentKey: contentId,
                 metadata: Self.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes)
             )
             return
@@ -421,6 +424,7 @@ final class PlaybackCoordinator {
                 position: position,
                 entry: entry,
                 episodeContext: context,
+                contentKey: episode.videoId,
                 metadata: Self.sessionMetadata(
                     for: item,
                     subtitle: episode.title.isEmpty ? nil : episode.title,

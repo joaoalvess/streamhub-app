@@ -451,11 +451,22 @@ struct MediaWindowView: View {
         focus = .mode
         guard let coordinator, let target = sourcesTarget else { return }
         sourcesTarget = nil
-        if coordinator.nativeSession?.title == item.title, let videoURL = stream.playbackURL {
+        if let contentKey = contentKey(for: target, item: item),
+           coordinator.nativeSession?.contentKey == contentKey,
+           let videoURL = stream.playbackURL {
             coordinator.switchNativeSource(videoURL: videoURL)
             return
         }
         start(target, item: item, coordinator: coordinator, preferredStream: stream)
+    }
+
+    private func contentKey(for target: PlayTarget, item: MediaItem) -> String? {
+        switch target {
+        case .movie:
+            return item.contentId
+        case .episode(let episode, _):
+            return episode.videoId
+        }
     }
 
     private func enterFullscreen() {
