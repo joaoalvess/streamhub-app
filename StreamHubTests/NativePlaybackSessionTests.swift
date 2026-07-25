@@ -146,6 +146,39 @@ struct NativePlaybackSessionTests {
         #expect(coordinator.progressStore.entries.isEmpty)
     }
 
+    @Test func switchKeepsSessionIdentityAndUpdatesURL() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        let original = try #require(coordinator.nativeSession)
+        let newURL = try #require(URL(string: "https://cdn/b.mkv"))
+
+        coordinator.switchNativeSource(videoURL: newURL)
+
+        let switched = try #require(coordinator.nativeSession)
+        #expect(switched.id == original.id)
+        #expect(switched.videoURL == newURL)
+        #expect(switched.title == original.title)
+    }
+
+    @Test func completeAfterSwitchAppliesPositionToMigratedSession() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        let newURL = try #require(URL(string: "https://cdn/b.mkv"))
+        coordinator.switchNativeSource(videoURL: newURL)
+        coordinator.updateNativePosition(845)
+        coordinator.completeNativeSession()
+
+        #expect(coordinator.nativeSession == nil)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 845)
+    }
+
+    @Test func switchWithoutActiveSessionIsNoOp() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.switchNativeSource(videoURL: try videoURL())
+
+        #expect(coordinator.nativeSession == nil)
+    }
+
     @Test func updateIgnoresZeroAndSessionlessTicks() throws {
         let coordinator = try makeCoordinator()
         coordinator.updateNativePosition(120)
