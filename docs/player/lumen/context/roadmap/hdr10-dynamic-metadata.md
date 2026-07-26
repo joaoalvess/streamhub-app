@@ -10,6 +10,8 @@ O achado central desta pesquisa muda o enquadramento do problema: **não existe 
 
 Isso implica que **terminar de "ligar" o parsing morto de `AV_FRAME_DATA_DYNAMIC_HDR_PLUS` (`FFmpegDecode.swift:102-103`) na forma óbvia — popular um `EDRMetaData`-like e jogar num `CAEDRMetadata`** — não produziria tone mapping dinâmico nenhum, porque o tipo de destino não tem onde guardar isso. Sobram duas estratégias reais, não mutuamente exclusivas:
 
+> **Correção (2026-07-25): a estratégia A abaixo está errada no ponto central — ela não é "de graça".** O passthrough do SEI é necessário mas não suficiente: sem a brand `cdm4` declarada em `SUPPLEMENTAL-CODECS` na playlist, o tvOS trata o stream como HDR10 estático. Ver "Resultado da execução" no fim deste documento antes de agir sobre este parágrafo. A estratégia B continua válida como escrita.
+
 **A) Passthrough "de graça" via o pipeline nativo `AVPlayer` (depende do item de roadmap "MKV com Dolby Vision e Atmos nativos via AVPlayer")** — quando existir o remux local MKV→HLS/fMP4 (stream-copy) alimentando `KSAVPlayer`/`AVURLAsset` (ver `context/investigation/proavplayer-mkv-com-dolby-vision-e-atmos-nativos-via-avplaye.md`, hoje Ausente), o SEI de HDR10+ sobrevive ao remux sem re-encode, e o próprio tvOS (Apple TV 4K 3ª geração+, tvOS 16+ — HDR10+ é suportado a nível de sistema desde então) aplica o tone mapping dinâmico sozinho, de ponta a ponta, sem nenhum código deste pacote. **Esse caminho não usa nem valida nada do parsing hoje presente no `MEPlayer`/`FFmpegDecode.swift`** — resolve o problema só para o subconjunto de conteúdo que passar por aquele pipeline nativo, e o parsing morto continua morto e irrelevante para ele.
 
 **B) Tone mapping manual via shader, só no caminho Metal custom** — usar os campos já extraídos de `AVDynamicHDRPlus` (curva Bezier + knee point + `targeted_system_display_maximum_luminance`, ST 2094-40 Anexo B) para aplicar a EETF (*Electro-optical-to-electro-optical transfer function*) por pixel no fragment shader, exatamente como `libplacebo`/`mpv` fazem hoje em código aberto (`haasn/libplacebo`, `shaders/colorspace.h`): parseiam a curva HDR10+ quando presente, senão caem para uma curva Bezier constante/estimativa de brilho de cena. Isso só é aplicável no caminho `CAMetalLayer` (`MetalPlayView.swift:185-219`, `Shaders.metal`), nunca no `AVSampleBufferDisplayLayer` — que é justamente o caminho **default e preferido hoje** (`KSOptions.isUseDisplayLayer()`, `KSOptions.swift:256-258`, com o comentário na linha 255 que citamos acima e que hoje sabemos ser impreciso quanto a HDR10+ dinâmico). Ou seja: essa feature entraria em tensão direta com a preferência atual por `displayLayer` — exigiria uma exceção que force o caminho Metal quando o frame carrega `AV_FRAME_DATA_DYNAMIC_HDR_PLUS`, abrindo mão do compositing por hardware/IOSurface nesses casos.
@@ -62,3 +64,41 @@ Escopo realista de MVP para B: tratar `num_windows == 1` (janela global) e aplic
 - `context/investigation/native-dolby-vision-dynamic-metadata-p5-p8-p7-single-layer.md` (este repositório) — feature irmã com a mesma lacuna de plumbing.
 - `context/investigation/proavplayer-mkv-com-dolby-vision-e-atmos-nativos-via-avplaye.md` (este repositório) — dependência estratégica não bloqueante (estratégia A).
 - `docs/04-decodifica-o.md` e `docs/06-render-de-v-deo-e-hdr.md` (este repositório) — mapeamento de arquivos/tipos/pegadinhas do pipeline de decode e render usados nesta pesquisa.
+
+---
+
+## Resultado da execução (2026-07-25) — [[hdr10plus]] entregue (código); a estratégia A precisava de código
+
+Seção adicionada na baixa da task. A análise das duas estratégias acima fica como estava, **exceto pelo ponto corrigido aqui**. Detalhe completo em [../exec/paridade-infuse-2026-07-25.md](../exec/paridade-infuse-2026-07-25.md).
+
+### O que esta pesquisa errou
+
+A estratégia A foi escrita como "o SEI sobrevive ao remux sem re-encode e o tvOS aplica o tone mapping sozinho, **sem nenhum código deste pacote**". O card do `ROADMAP.md` herdou isso ("estratégia A: nenhum código HDR novo — é validação sobre o ProAVPlayer entregue"). **É falso.**
+
+O passthrough do SEI é condição necessária, não suficiente. Em 2024 a Apple definiu como HDR10+ se declara em HLS: o atributo **`SUPPLEMENTAL-CODECS`** da `#EXT-X-STREAM-INF`, com a brand **`cdm4`** (a mesma brand do CTA-5001 / spec HDR10+ da AOM) anexada à string de codec da base layer, junto com `VIDEO-RANGE=PQ`. A forma é `SUPPLEMENTAL-CODECS="hvc1.2.20000000.L123.B0/cdm4"` — exatamente o exemplo que aparece no material público da Apple, e o appendix lista a forma análoga para AV1 (`av01…/cdm4`, PQ). **Sem esse atributo o tvOS não sabe que existe metadado dinâmico e trata o stream como HDR10 estático**, mesmo com o SEI ST 2094-40 intacto dentro do bitstream — que é precisamente o "rebaixamento silencioso" que a seção de riscos deste doc já descrevia como o comportamento atual.
+
+Consequência prática: a estratégia A é **S de esforço mas não é zero**, e o critério de aceite do card ("amostra HDR10+ ativa o modo HDR10+ na TV") nunca teria sido atingido só validando.
+
+### O que a lane `signaling` implementou
+
+- **`Sources/Lumen/MEPlayer/ProAVHDR10PlusScanner.swift`** (novo, puro, sem estado compartilhado): walker de NALs length-prefixed que filtra **prefix SEI (NAL type 39)**, desfaz o emulation prevention e casa **payload type 4** com country code `0xB5`, provider `0x003C`, provider oriented code `0x0001` e application identifier `4`. As constantes foram conferidas contra `itut35.c`/`itut35.h` do FFmpeg, não de memória.
+- **Fiação em `MEPlayerItem`**: caminho barato primeiro (`coded_side_data` do stream, depois `AV_PKT_DATA_DYNAMIC_HDR10_PLUS` por packet), com o scanner de SEI como fallback; armado em `startProAVRemux`, aplicado a cada packet de vídeo em `writeProAVPacket` **antes** da lógica de corte, desarmado após `remuxMoovWritten`.
+- **`ProAVRemuxSession.noteDynamicHDR10Plus()`** (flag sob lock, ignorada depois de `initBoundaryFound`) e `completeInitSegmentLocked` aplicando `signaling.addingDynamicHDR10Plus()` antes de escrever a master.
+- **Brand `cdm4` também nas compatible brands do `ftyp`** do init segment. A spec HDR10+ da AOM referenciando CTA-5001 diz que a brand "should be used in the ftyp box"; é barato aqui porque o init segment chega inteiro como `Data` e o fMP4 usa `default_base_moof` + `skip_sidx` (sem offset absoluto), com init e segmentos em arquivos separados. Qualquer falha de parse grava o init original — a sessão nunca morre por isso.
+
+### Janela de timing: por que funciona
+
+Com `+delay_moov` e `frag_custom` o muxer não emite nada até o primeiro corte, e o `ProAVInitBoundaryScanner` devolve `.buffering` até aparecer uma caixa `moof`. Ou seja, `completeInitSegmentLocked` (e a escrita da master) só pode rodar no primeiro flush de fragmento — **todos os packets da primeira janela (~2 s) já passaram pelo scan nessa altura**. O gate é simplesmente `!remuxMoovWritten`, sem corrida. Sem deadlock: `noteDynamicHDR10Plus` pega o mesmo `NSLock` de `write(buffer:)`, mas roda antes de qualquer `av_write_frame` da mesma invocação.
+
+### Desempate Dolby Vision × HDR10+ (o cenário-limite que a seção de riscos apontava)
+
+Resolvido **estruturalmente**, sem checagem extra: `addingDynamicHDR10Plus()` só age quando `codecTag == "hvc1" && videoRange == "PQ" && supplementalCodecs == nil`. Isso exclui DV 5 e 8.1 (`dvh1`), DV 8.2 e 8.4 (já têm `supplementalCodecs`), 8.4/HLG (range) e H.264 (`avc1`). Um rip dual-profile DV+HDR10+ sai anunciado como Dolby Vision, nunca como os dois — que é a escolha do Infuse e evita o bug de prioridade que a pesquisa citou.
+
+Com a flag desligada nada muda: playlist e init segment saem byte-idênticos (há teste comparando a master contra a string literal completa).
+
+### O que continua aberto
+
+- **Nenhuma validação em hardware.** Não dá para provar em teste unitário que o tvOS aplica tone mapping dinâmico com `SUPPLEMENTAL-CODECS=".../cdm4"`. Falta um título HDR10+ real numa TV que suporte.
+- **O fio completo `side data → SEI → flag` não tem teste** (exige mídia real). Provado por partes: scanner (14 testes com fixtures inline) e sessão.
+- **Efeito da brand no `ftyp` desconhecido.** Se a mídia parar de tocar com a brand presente, remover é diff de 3 linhas em `ProAVRemuxSession.swift`.
+- **A estratégia B continua não iniciada e continua a resposta certa para o caminho `KSMEPlayer`** — o `AV_FRAME_DATA_DYNAMIC_HDR_PLUS` segue sendo lido e jogado fora em `FFmpegDecode.swift`. Nada nesta entrega mudou isso, e a recomendação de medir a fração real do catálogo antes de investir continua válida.

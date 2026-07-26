@@ -68,3 +68,15 @@ Não existe `context/investigation/full-ass-subtitle-effects-render-via-libass.m
 - Jellyfin (burn-in server-side de ASS via filtro `subtitles`/`ass` do FFmpeg, que internamente usa libass) — modelo alternativo de transcodificação, citado só como contraste: não serve ao StreamHub, que precisa de overlay client-side sobre o remux/stream direto.
 - `docs/07-legendas.md` (este repositório) — mapa completo do subsistema de legendas atual usado como base desta pesquisa.
 - `context/investigation/word-by-word-subtitles.md`, `context/investigation/use-fonts-embedded-in-the-video-to-render-subtitles.md`, `context/investigation/display-subtitles-with-hdr-effects.md` (este repositório) — investigações irmãs, todas com sobreposição de escopo/dependência com esta.
+
+---
+
+## Adendo de 2026-07-25 (lote paridade Infuse) — defeitos do parser Swift atual, medidos
+
+Esta task existe para substituir o parser Swift aproximado. Um lote de correções de legenda em 2026-07-25 mediu três defeitos dele; ficam registrados aqui porque são exatamente o tipo de coisa que a migração para libass tem de não reintroduzir — e porque, enquanto a migração não acontecer, são bugs vivos. Detalhe em [../exec/paridade-infuse-2026-07-25.md](../exec/paridade-infuse-2026-07-25.md).
+
+- **`String.parseDuration` lia a fração como milésimos qualquer que fosse a largura** (`00:12:37,18` → 757,018 s; `,1` → 757,001 s). Corrigido: a fração passou a ser lida pela contagem de dígitos. Só SRT era afetado — em ASS e VTT o `Scanner.scanDouble()` com locale nulo já consumia `37.73` inteiro no campo de segundos e o `/1000` nunca era alcançado. **A crença de que ASS tinha erro de 0,9 s é falsa**, e foi refutada rodando o corpo da função isolado contra 23 timestamps.
+- **`VTTParse.parsePart` entrega as cue settings junto com o timestamp** (`KSParseProtocol.swift:394-398`): `components(separatedBy: "-->")` devolve `" 00:03.380 align:start"`, o guard de hora (`split(separator: ":").count > 2`) conta o `align:start` e o resultado é **202,8 s em vez de 3,38 s** — a cue fica ~3 min na tela e mascara as seguintes. Só acontece no formato curto `mm:ss.mmm`; com hora explícita sai certo. **Não corrigido** (bug pré-existente, fora do escopo daquele lote). Conserto certo: cortar as cue settings em `VTTParse.parsePart`, **não** relaxar a heurística do `split`.
+- **`AssParse.canParse` pode entrar em loop infinito** com `[Script Info]` sem linha `Format:` — o `while scanner.scanString("Format:") == nil` (`KSParseProtocol.swift:58-66`) não checa `isAtEnd` e nenhum ramo avança o scanner no fim da string. **Não corrigido.**
+
+Nota de fronteira para o desenho da migração: as instâncias em `KSOptions.subtitleParses` são compartilhadas e statefull (`AssParse` acumula `styleMap`/`eventKeys`/`playResX/Y` entre arquivos no mesmo processo), e o `fontScale` de ASS é fotografado no `canParse` — ASS já parseado não reescala se o usuário mudar o tamanho da legenda no meio do filme.

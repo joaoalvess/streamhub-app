@@ -65,3 +65,17 @@ Ao contrário do HDR10+ dinâmico (onde falta API da Apple), aqui **todas as pe�
 - `docs/07-legendas.md` (este repositório) — pegadinha "Fonte global sobrescreve fonte ASS" (`KSSubtitle.swift:346-351`), a dependência funcional central deste roadmap.
 - `docs/01-vis-o-geral-e-build.md` (este repositório) — status do produto `libass` comentado no `Package.swift`, base da seção de Dependências sobre reaproveitamento de infraestrutura.
 - `docs/00-ARQUITETURA.md` (este repositório) — disciplina de `StrictConcurrency`/`Sendable` e threading do `MEPlayerItem` usada para avaliar os riscos de ciclo de vida.
+
+---
+
+## Resultado da execução — [[fontes-embutidas]] entregue (`7c53d53`), auditado em 2026-07-25
+
+O `EmbeddedFontRegistry` foi entregue no commit `7c53d53` (`feat: render subtitles with fonts embedded in the container`), pela rota que esta pesquisa desenhou: extração dos anexos + `CTFontManagerRegisterGraphicsFont` + tabela de nomes consultada pelo `AssParse`. Esta seção registra o que uma auditoria do lote paridade Infuse (2026-07-25) confirmou e o que ela achou de novo. Detalhe em [../exec/paridade-infuse-2026-07-25.md](../exec/paridade-infuse-2026-07-25.md).
+
+**O passo 5 que a pesquisa não tinha:** registrar a fonte e resolver o nome não bastava, porque o tick de exibição carimbava a fonte global **por cima** do que o parser tinha posto. O mesmo commit `7c53d53` corrigiu isso — `SubtitleModel.subtitle(currentTime:)` faz `enumerateAttribute(.font)` e preenche **só onde `value == nil`** (`KSSubtitle.swift:349-358`) — e criou `AssParse.fontScale(playResY:preferredSize:)` (`KSParseProtocol.swift:45`), que é como `SubtitleModel.textFontSize` continua escalando ASS sem carimbar. Uma task posterior foi aberta para "corrigir" isso e descobriu que **já estava correto**; o que faltava era cobertura: 4 testes do tick agora provam que a fonte do parser sobrevive, que run sem fonte recebe a global, que o preenchimento parcial funciona em dois runs, e o caso ASS ponta a ponta com `Fontname` de cabeçalho + `\fn`/`\fs` inline.
+
+**Limitação descoberta na auditoria, não documentada em lugar nenhum:** o carimbo do tick é **permanente por part**. Um `SubtitlePart` de arquivo externo vive em `KSSubtitle.parts` o filme inteiro; depois de exibido uma vez ele congela o tamanho global vigente naquele instante. Consequência: **mudar o tamanho da legenda no meio da reprodução só afeta cues ainda não exibidas.** Para ASS o efeito é outro e igualmente permanente — o `fontScale` é fotografado no `canParse`, então ASS já parseado não reescala.
+
+**O que continua sem prova:** os testes cobrem o mecanismo (o `.font` posto pelo parser sobrevive ao tick), **não** o registro CoreText. Provar o registro exigiria bytes de fonte no bundle de teste e `CTFontManagerRegisterGraphicsFont` no processo de teste. Continua pendente de hardware: um MKV com fontes como attachment renderizando com a fonte do container.
+
+**Higiene, para quem for mexer aqui depois:** as instâncias de parser em `KSOptions.subtitleParses` são compartilhadas e statefull — `AssParse` acumula `styleMap`/`eventKeys`/`playResX/Y` entre arquivos no mesmo processo. E `AssParse.canParse` pode entrar em **loop infinito** com um `[Script Info]` sem linha `Format:`: o `while scanner.scanString("Format:") == nil` (`KSParseProtocol.swift:58-66`) não checa `isAtEnd` e nenhum ramo avança o scanner no fim da string.

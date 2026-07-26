@@ -101,3 +101,13 @@ Seção adicionada na baixa da task; a pesquisa acima fica como estava. Detalhe 
 - P7 **dual-track** (RPU numa trilha EL que o remux não mapeia) sairia anunciado como DV 8.1 sem metadata nenhuma — daí a guarda que falha a sessão se nenhuma RPU for convertida até o primeiro fragmento. Nunca confrontado com amostra real.
 - Foi usado o **mode 2** (curvas luma/chroma em no-op, padrão `dovi_tool -m 2`); o **mode 4** preserva o mapping e é a alternativa se a validação de FEL mostrar desvio de cor.
 - Não corrigível daqui: com sample entry `dvh1`, o `movenc` escreve `hvcC` com `array_completeness = 0` (ele decide esse bit só por `tag == 'hvc1'`). É não-conformidade formal com a ISO 14496-15; impacto no AVFoundation desconhecido.
+
+### Adendo de 2026-07-25 (lote paridade Infuse) — perfil 8.2
+
+A matriz de sinalização desta pesquisa não cobria `dv_bl_signal_compatibility_id == 2` (base layer **SDR**), e o `ProAVVideoSignaling` recusava esse par — todo MKV DV 8.2 caía no `KSMEPlayer`, perdendo o caminho nativo. Entregue um case `(8, 2)` no mesmo formato do `(8, 4)`: `codecTag = "hvc1"`, `CODECS` com a string HEVC da base layer, `SUPPLEMENTAL-CODECS="dvh1.PP.LL/db2g"`, `VIDEO-RANGE=SDR`.
+
+**De onde vem `db2g`, já que não é da Apple:** o appendix da HLS Authoring Specification **não** tem linha para 8.2 — só `db1p`/PQ, `db4h`/HLG, 10.4 e AV1+`cdm4`. A brand para compat id 2 está no código do shaka-packager (`dovi_decoder_configuration_record.cc`, `case 2 -> FOURCC_db2g`), derivada da spec Dolby ISO BMFF v2.4; o sufixo segue o padrão `p` = PQ, `h` = HLG, `g` = gamma/SDR. O `VIDEO-RANGE=SDR` vem da regra que a Apple escreve explicitamente: "for Dolby Vision, the compatibility brand and the VIDEO-RANGE attribute act as cross-checks". **Não foi escolhido por simetria com o 8.4.**
+
+**Exemplo conflitante no ecossistema, registrado de propósito:** o teste do shaka-packager emite `db2g` com `VIDEO-RANGE=PQ`. Isso deriva do `color_trc` do asset de teste deles, não de regra — mas é motivo suficiente para não tratar o par `db2g`/SDR como resolvido antes da TV.
+
+**Risco de hardware específico deste case:** `preferredDynamicRange = .dolbyVision` alimenta `AVDisplayCriteria` e chaveia o modo de saída HDMI. Se o tvOS não reconhecer `db2g`, ele ignora o `SUPPLEMENTAL-CODECS` e toca a base layer SDR conforme a spec — **com o painel já em modo Dolby Vision**. Sintoma: imagem lavada ou esmagada, sem erro nenhum e sem fallback (o remux teve sucesso). Se acontecer, trocar para `.sdr` no case `(8, 2)` é diff de 1 linha em `ProAVPlaylist.swift:44`. O caso `(8, 4)` tem a mesma forma com HLG, onde o descasamento é menor.

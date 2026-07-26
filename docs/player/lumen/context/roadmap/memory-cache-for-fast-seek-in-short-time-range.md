@@ -89,3 +89,12 @@ Seção adicionada na baixa de [[seek-ram]]; a pesquisa acima fica como estava. 
 - Trilhas que não participam do dreno (legendas) precisam continuar sendo flushadas no fast-path.
 
 **O que continua aberto:** camada 2 (anel de retenção para trás — task própria no kanban). Constante nova sem validação em hardware: o deadline de 0,5 s da confirmação do dreno. Custo do teste de elegibilidade na thread do chamador (scan linear por trilha, ~100 µs estimados) ainda não medido em Apple TV.
+
+### Adendo de 2026-07-25 (lote paridade Infuse) — o `ProAVPlayer` ganhou um seek curto por outro caminho
+
+Esta pesquisa é sobre o motor `MEPlayer`. No mesmo dia, o `ProAVPlayer` passou a servir seek dentro de `[origem da playlist, origem + soma dos segmentos fechados]` **sem tocar neste anel**: quem seeka é o AVPlayer interno, dentro do HLS já gravado em disco, e o remux nem é reiniciado. Ou seja, no engine primário o "seek curto instantâneo" já existe e vem do disco, não da RAM.
+
+Duas implicações para [[seek-ram-anel]]:
+
+- O ganho da camada 2 se concentra no conteúdo que **cai no `KSMEPlayer`** (AV1, VP9, VC-1, MPEG-2, H.264 High10, ou qualquer falha do remux). Vale medir os dois lado a lado antes de dimensionar o teto de RAM — a expectativa do usuário passou a ser calibrada pelo caminho ProAV.
+- A janela do ProAV exclui o segmento **aberto** por construção, e o comportamento do AVPlayer ao seekar uma playlist EVENT exatamente na borda superior **não foi verificado em hardware**. Se der stall na borda lá, o mesmo cuidado provavelmente vale aqui.

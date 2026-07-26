@@ -96,3 +96,42 @@ Seção adicionada na baixa da task; a pesquisa acima fica como estava. Detalhe 
 **Bug lateral encontrado e corrigido:** `startProAVRemux` mapeava o stream de `preferredAudioTrackID`, mas `createCodec` deixava todos os streams em `AVDISCARD_ALL` menos o escolhido por `av_find_best_stream` — depois de uma troca de faixa de áudio, o stream mapeado nunca produzia packet.
 
 **Inconclusivo, precisa de amostra:** o muxer lê `complexity_index_type_a` do **primeiro** header do packet (substream independente), enquanto `codecpar.profile` termina com o valor do **último** header parseado pelo decoder (o dependente, quando existe). Se divergirem num DD+ JOC real, a playlist pode anunciar `16/JOC` com um `dec3` sem o flag. É exatamente isso que a inspeção do `dec3` no aceite precisa desempatar.
+
+---
+
+## Resultado da execução (2026-07-25) — lote paridade Infuse
+
+Segunda baixa sobre este engine, no mesmo dia. A pesquisa acima e a seção do [[atmos-dec3]] ficam como estavam. Detalhe completo em [../exec/paridade-infuse-2026-07-25.md](../exec/paridade-infuse-2026-07-25.md).
+
+Três lacunas que a pesquisa original tinha listado como "o preço de usar o AVPlayer" foram fechadas, e nenhuma exigiu abrir mão do remux.
+
+### Legendas embutidas — o gap era maior do que "não estão na playlist"
+
+A pesquisa (e o `docs/03`) descrevia o problema como "o remux carrega só vídeo e uma trilha de áudio". Verdade, mas incompleto: em `MEPlayerItem.reading()` o early-return `if size <= 0 || remuxSession != nil` **descartava todos os packets** em modo remux. Ligar `decode()` nas tracks de legenda sozinho não teria efeito nenhum.
+
+O que foi feito: com `remuxSession`, `readThread` chama `decode()` só nas tracks `.subtitle` e `reading()` roteia packet de legenda para `assetTrack.subtitle?.putPacket` — vídeo e áudio continuam idle, e as legendas **não** entram na playlist HLS (segue sendo overlay do `SubtitleModel`, não rendition nativa). O `ProAVPlayer` passou a devolver `self` em `subtitleDataSouce`.
+
+**Descoberta que forçou o desenho:** `CircularBuffer.search`, além de consumir os parts casados, **salta o `headIndex` por cima dos anteriores não casados e os descarta**. Com o seek regressivo dentro da janela (abaixo), a legenda do trecho re-assistido simplesmente não existiria mais. Daí o `ProAVSubtitlePartStore`: store persistente, inserção ordenada, dedupe por `(start, texto, presença de imagem)` e cap de `end == .infinity` quando chega um part posterior. Também não dava para expor os `FFmpegAssetTrack` crus como `infos` (como faz o `KSMEPlayer`): o `SubtitleModel` tira um snapshot único em `readyToPlay+1s` e o `remuxItem` morre a cada restart, então os infos apontariam para item shutdownado. Os `infos` são proxies estáveis por trackID que rebindam ao item corrente.
+
+**Custo que ninguém mediu e é a maior incógnita desta entrega:** `assetTrack.subtitle` é um `SyncPlayerItemTrack`, cujo `putPacket` decodifica **síncrono, na thread do chamador** — que em modo remux é a thread que alimenta `av_write_frame`. Texto é barato; PGS/VobSub é PAL8→ARGB + `CGImage.combine` + **encode PNG por cue**, inline, na thread que produz os segmentos que o AVPlayer está consumindo. Somando: `codecDidChangeCapacity` retorna cedo quando há `remuxSession`, então o read loop não tem pacing nenhum. Virou a task [[legendas-remux-pacing]] no kanban.
+
+### Seek dentro da janela já remuxada
+
+`ProAVRemuxSession.closedSegmentsDuration` (só segmentos **fechados** — o aberto fica de fora por construção) + função pura `ProAVPlayer.seekRoute`. Alvo dentro da janela vai direto para `innerPlayer.seek`; fora dela mantém o restart. Guarda por `innerPlayer.isReadyToPlay`, **não** por `reportedReady` (que continua `true` durante um restart em voo, e pendura a completion do restart anterior).
+
+**Bug de relógio que isso expôs, e que existia desde o [[proavplayer]]:** `currentPlaybackTime` era `startOffset + inner`, sendo `startOffset` o instante **pedido**. Mas `avformat_seek_file(ctx, -1, Int64.min, ts, Int64.max, 0)` com min/max ilimitados cai no ramo `AVSEEK_FLAG_BACKWARD` do fallback do libavformat e o demux aterrissa no **keyframe anterior**; com `use_editlist=0` o t=0 da playlist é esse keyframe. O erro (até um GOP) era invisível enquanto só alimentava a barra; virou dessincronia visível quando a legenda passou a ser consultada por esse relógio. A sessão passou a publicar `playlistStartSeconds` e o player usa `timelineOrigin = session?.playlistStartSeconds ?? startOffset`. **Resíduo conhecido:** a âncora é o PTS do primeiro keyframe, mas a timeline do fMP4 é rebaseada pelo DTS do primeiro packet escrito — para HEVC com reordenação de B-frames sobra o atraso de reordenação, ~2-3 frames (~80-125 ms a 24 fps).
+
+### Troca de faixa de áudio sem derrubar a reprodução
+
+Reusa o ciclo `pendingSourceSwitch` do [[zero-delay]] com a mesma URL e outro `preferredAudioTrackID`. `select(track:)` decide por função pura entre `ignore`/`abortPending`/`hotSwitch`/`coldRestart`; reselecionar a faixa que já toca virou no-op (corrige um restart inútil pré-existente).
+
+Exigiu encostar no `KSAVPlayer`, que o plano tinha deixado fora: `commitPendingSourceSwitch` transplantava `player.currentTime()` da timeline **velha** para o item **novo**, que tem outra origem — não é rewind, é posição sem sentido, clampada pelo AVPlayer para a borda da playlist nova. `switchSource` ganhou sobrecarga interna com `resumeShift` (a pública passa `0`, nenhum caller existente muda) e o `ProAVPlayer` passa `timelineOrigin − candidateOrigin`.
+
+**Defeito conhecido, não corrigido:** o ramo `.abortPending` não reverte o `preferredAudioTrackID`, então cancelar uma troca faz o próximo restart reabrir na faixa cancelada. Correção de 1 linha, listada na preparação transversal do `ROADMAP.md`.
+
+### Limites que continuam valendo
+
+- **Habilitar legenda bitmap no meio do filme** só produz frames a partir de onde o demux de remux já está (à frente do playback) — vão sem legenda até o playback alcançar. É o equivalente do `isSeekImageSubtitle` do `KSMEPlayer`, impossível neste caminho porque re-seekar o demuxer quebra o remux. Um seek fora da janela resolve.
+- **Faixa de legenda de texto não desliga:** o setter de `FFmpegAssetTrack.isEnabled` força `AVDISCARD_DEFAULT` para legenda não-bitmap independentemente do valor.
+- **Proxies fantasma na troca de URL:** os stores são resetados mas os proxies nunca removidos. Consertar por cima não resolve — o `SubtitleModel` nunca reconsulta `infos` depois do snapshot.
+- **Legendas continuam fora do master HLS.** Renditions de legenda/áudio (troca nativa pelo AVPlayer, sem passar pelo `SubtitleModel`) seguem não implementadas.

@@ -82,3 +82,15 @@ Seção adicionada na baixa de [[zero-delay]]; a pesquisa acima fica como estava
 **Medições/limites descobertos:** a troca no caminho ProAV **rebobina pela latência do remux** (o `startOffset` é congelado no pedido e o commit só acontece com 2 segmentos prontos: 1-5 s na prática). Fechar isso é decisão de produto — margem preditiva arrisca pular conteúdo; recomputar no commit implica reiniciar o remux.
 
 **O que continua aberto:** camadas 3/4 (hot swap no motor `KSMEPlayer` + handoff de áudio) e o prewarm especulativo de candidatos (item 8 do design, **sem seção de pesquisa neste doc** — escrever antes de executar). E o bloqueio de validação: com sessão nativa ativa o seletor de fontes do app está sob `.disabled`, então o aceite não é exercitável ponta a ponta.
+
+### Correção de 2026-07-25 (lote paridade Infuse) — a rebobinada tinha causa diferente da diagnosticada
+
+A seção acima registrou que "a troca no caminho ProAV **rebobina pela latência do remux** (o `startOffset` é congelado no pedido e o commit só acontece com 2 segmentos prontos)" e classificou o conserto como decisão de produto sem resposta única. **A leitura estava incompleta e a parte principal era um bug, não um trade-off.**
+
+`KSAVPlayer.commitPendingSourceSwitch` fazia `let resumeTime = player.currentTime()` — posição na timeline **VELHA** — e dava `seek(to: resumeTime, toleranceBefore: .zero, toleranceAfter: .zero)` no item **NOVO**, que tem outra origem de playlist. Não é um atraso proporcional à latência do remux: é um número de outro sistema de coordenadas. Dependendo de quanto a playlist nova já cresceu no instante do commit, o clamp do AVPlayer joga a reprodução **para a frente** (perda de conteúdo, possivelmente dezenas de segundos, porque o remux é stream-copy e roda muito acima do tempo real) ou para trás. Com tolerância zero fora do seekable range também pode ficar em stall.
+
+Corrigido em `f54ca3d`: `switchSource` ganhou uma sobrecarga interna com `resumeShift` (a assinatura pública do `MediaPlayerProtocol` continua existindo e chama a nova com `0`, então nenhum caller existente muda de comportamento) e o commit soma esse shift ao `player.currentTime()`. O `ProAVPlayer` passa `timelineOrigin − candidateOrigin`, isto é, a diferença entre as duas origens de playlist — um escalar conhecido no momento do pedido, que mapeia a posição **ao vivo no instante do commit** em vez de fixar um instante já velho.
+
+**O que resta é de fato o trade-off original, e agora só ele:** se o remux novo ainda não alcançou a posição atual, o AVPlayer clampa na borda da playlist nova — rewind da ordem da latência do remux. Isso continua aceito.
+
+Duas consequências para as camadas 3/4 ([[zero-delay-meplayer]]): (a) o equivalente no `KSMEPlayer` precisa resolver o mesmo problema de origem de timeline, não só o de pipeline; (b) o mesmo ciclo `pendingSourceSwitch` passou a ser reusado para **troca de faixa de áudio** na mesma URL (lote paridade Infuse), então mudanças nesse ciclo agora afetam dois fluxos, não um.
