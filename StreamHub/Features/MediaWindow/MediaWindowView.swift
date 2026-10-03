@@ -28,6 +28,7 @@ struct MediaWindowView: View {
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @Environment(MetaProvider.self) private var metaProvider: MetaProvider?
     @Environment(MyListStore.self) private var myList: MyListStore?
+    @Environment(ToastCenter.self) private var toasts: ToastCenter?
 
     private enum ScrollAnchor: Hashable { case top, episodes }
 
@@ -107,6 +108,9 @@ struct MediaWindowView: View {
             handleBack()
         }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
+        .onAppear {
+            playbackMode = .stored(profileId: coordinator?.progressStore.activeProfileID)
+        }
         .onChange(of: centerIndex) { _, _ in
             hasLeftStart = true
             autoplayPending = false
@@ -195,6 +199,7 @@ struct MediaWindowView: View {
             onCycleMode: {
                 guard !showsSources else { return }
                 playbackMode = playbackMode.next
+                playbackMode.store(profileId: coordinator?.progressStore.activeProfileID)
             },
             onHoldMode: { holdMode(loaded.item) },
             onToggleEngine: {
@@ -202,7 +207,7 @@ struct MediaWindowView: View {
                 playerEngine = playerEngine.next
                 playerEngine.store()
             },
-            onAdd: { myList?.toggle(loaded.item) },
+            onAdd: { toggleMyList(loaded.item) },
             onInfo: showDetails,
             onShowDetails: showDetails
         )
@@ -403,6 +408,16 @@ struct MediaWindowView: View {
 
     private func resolvePlayTarget(for item: MediaItem) -> PlayResolution {
         PlayPlanner.resolveTarget(for: item, in: playContext(for: item))
+    }
+
+    private func toggleMyList(_ item: MediaItem) {
+        guard let myList else { return }
+        let wasInList = myList.contains(item)
+        myList.toggle(item)
+        toasts?.show(
+            wasInList ? "Removido da Minha lista" : "Adicionado à Minha lista",
+            systemImage: wasInList ? "xmark" : "checkmark"
+        )
     }
 
     private func holdMode(_ item: MediaItem) {
