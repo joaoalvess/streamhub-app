@@ -5,6 +5,7 @@ nonisolated struct SecretsStore {
     static let shared = SecretsStore()
 
     private static let service = "joaoalvess.StreamHub.secrets"
+    private static let jellyfinIdentityKeys: [Key] = [.jellyfinBase, .jellyfinUsername, .jellyfinPw]
 
     nonisolated enum Key: String, CaseIterable {
         case aioStreamsCinemaBase = "AIOStreamsCinemaBase"
@@ -23,9 +24,15 @@ nonisolated struct SecretsStore {
         guard let url = Bundle.main.url(forResource: "Secrets", withExtension: "plist"),
               let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
-              let values = plist as? [String: String] else { return }
+              let values = plist as? [String: Any] else { return }
         for key in Key.allCases {
-            guard let value = values[key.rawValue], !value.isEmpty else { continue }
+            guard let value = values[key.rawValue] as? String, !value.isEmpty else { continue }
+            let stored = read(key)
+            guard stored != value else { continue }
+            if stored != nil, Self.jellyfinIdentityKeys.contains(key) {
+                remove(.jellyfinAccessToken)
+                remove(.jellyfinUserId)
+            }
             write(value, for: key)
         }
     }
@@ -36,19 +43,15 @@ nonisolated struct SecretsStore {
         case .casual: .aioStreamsCasualBase
         case .anime: .aioStreamsAnimeBase
         }
-        guard let value = read(key) else { return nil }
-        let normalized = value.hasSuffix("/") ? String(value.dropLast()) : value
-        return URL(string: normalized)
+        return baseURL(for: key)
     }
 
     var metadataBase: URL? {
-        read(.aioMetadataBase).flatMap(URL.init(string:))
+        baseURL(for: .aioMetadataBase)
     }
 
     var jellyfinBase: URL? {
-        guard let value = read(.jellyfinBase) else { return nil }
-        let normalized = value.hasSuffix("/") ? String(value.dropLast()) : value
-        return URL(string: normalized)
+        baseURL(for: .jellyfinBase)
     }
 
     var jellyfinUsername: String? {
@@ -82,6 +85,12 @@ nonisolated struct SecretsStore {
         query[kSecValueData as String] = data
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(query as CFDictionary, nil)
+    }
+
+    private func baseURL(for key: Key) -> URL? {
+        guard let value = read(key) else { return nil }
+        let normalized = value.hasSuffix("/") ? String(value.dropLast()) : value
+        return URL(string: normalized)
     }
 
     private func baseQuery(for key: Key) -> [String: Any] {
