@@ -143,7 +143,7 @@ struct MediaWindowView: View {
                 .zIndex(1)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: nativeSession?.id)
+        .animation(.easeOut(duration: 0.2), value: nativeSession != nil)
         .onChange(of: nativeSession?.id) { previousID, currentID in
             if previousID != nil, currentID == nil {
                 focus = overlayReturnFocus
@@ -371,8 +371,16 @@ struct MediaWindowView: View {
     private func playEpisode(_ episode: EpisodeItem, item: MediaItem) {
         guard let coordinator else { return }
         let next = seriesModel.episodeAfter(episode)
+        let timeline = seriesModel.episodeTimeline
         Task {
-            await coordinator.play(item: item, episode: episode, next: next, mode: playbackMode, engine: playerEngine)
+            await coordinator.play(
+                item: item,
+                episode: episode,
+                next: next,
+                timeline: timeline,
+                mode: playbackMode,
+                engine: playerEngine
+            )
         }
     }
 
@@ -393,11 +401,13 @@ struct MediaWindowView: View {
                 )
             }
         case .episode(let episode, let next):
+            let timeline = seriesModel.episodeTimeline
             Task {
                 await coordinator.play(
                     item: item,
                     episode: episode,
                     next: next,
+                    timeline: timeline,
                     mode: playbackMode,
                     engine: playerEngine,
                     preferredStream: preferredStream
@@ -474,7 +484,7 @@ struct MediaWindowView: View {
         if let contentKey = PlayPlanner.contentKey(for: target, item: item),
            coordinator.nativeSession?.contentKey == contentKey,
            let videoURL = stream.playbackURL {
-            coordinator.switchNativeSource(videoURL: videoURL)
+            coordinator.switchNativeSource(videoURL: videoURL, stream: stream)
             return
         }
         start(target, item: item, coordinator: coordinator, preferredStream: stream)

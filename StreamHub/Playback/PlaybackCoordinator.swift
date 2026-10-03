@@ -74,7 +74,12 @@ final class PlaybackCoordinator {
     private let cache = AsyncTTLCache<String, [AddonStream]>(ttl: 60, capacity: 10, shouldStore: { !$0.isEmpty })
     private var playGeneration = 0
     private let trackPreferenceStore: TrackPreferenceStore
+    @ObservationIgnored private var nativeContext: NativePlaybackContext?
     @ObservationIgnored private var nativePreferenceScope = TrackPreferenceScope.global
+    @ObservationIgnored private var nativeSourceStreams: [AddonStream] = []
+    @ObservationIgnored private var prefetchTask: Task<Void, Never>?
+    @ObservationIgnored private var prefetchedNext: (videoId: String, stream: AddonStream)?
+    @ObservationIgnored private var isAdvancing = false
 
     init(
         api: StreamsAPI = StreamsAPI(),
@@ -119,6 +124,7 @@ final class PlaybackCoordinator {
         item: MediaItem,
         episode: EpisodeItem,
         next: EpisodeItem?,
+        timeline: EpisodeTimeline? = nil,
         mode: PlaybackMode,
         engine: PlayerEngine = .infuse,
         preferredStream: AddonStream? = nil
@@ -128,6 +134,7 @@ final class PlaybackCoordinator {
             item: item,
             episode: episode,
             next: next,
+            timeline: timeline,
             mode: mode,
             engine: engine,
             preferredStream: preferredStream,
@@ -194,6 +201,30 @@ final class PlaybackCoordinator {
         metadata: NativeSessionMetadata? = nil,
         preferenceScope: TrackPreferenceScope = .global
     ) {
+        beginNativeSession(
+            videoURL: videoURL,
+            title: title,
+            position: position,
+            entry: entry,
+            episodeContext: episodeContext,
+            contentKey: contentKey,
+            metadata: metadata,
+            preferenceScope: preferenceScope,
+            context: nil
+        )
+    }
+
+    private func beginNativeSession(
+        videoURL: URL,
+        title: String,
+        position: Int?,
+        entry: ResumeEntry?,
+        episodeContext: EpisodeSessionContext?,
+        contentKey: String?,
+        metadata: NativeSessionMetadata?,
+        preferenceScope: TrackPreferenceScope,
+        context: NativePlaybackContext?
+    ) {
         if let entry {
             progressStore.registerSession(
                 videoURL: videoURL.absoluteString,
@@ -205,6 +236,8 @@ final class PlaybackCoordinator {
         nativeDuration = nil
         lastCheckpoint = nil
         lastEndedNativePosition = nil
+        resetNativeContext()
+        nativeContext = context
         nativePreferenceScope = preferenceScope
         nativeSession = NativePlaybackSession(
             videoURL: videoURL,
@@ -220,7 +253,7 @@ final class PlaybackCoordinator {
         state = .idle
     }
 
-    func switchNativeSource(videoURL: URL) {
+    func switchNativeSource(videoURL: URL, stream: AddonStream? = nil) {
         guard var session = nativeSession, session.videoURL != videoURL else { return }
         progressStore.migrateSession(
             videoURL: session.videoURL.absoluteString,
@@ -228,6 +261,14 @@ final class PlaybackCoordinator {
         )
         session.videoURL = videoURL
         nativeSession = session
+        guard let stream, var context = nativeContext else { return }
+        let bingeGroup = stream.behaviorHints?.bingeGroup
+        guard context.bingeGroup != bingeGroup else { return }
+        context.bingeGroup = bingeGroup
+        nativeContext = context
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedNext = nil
     }
 
     func setNativeSegments(_ segments: [NativeSkipSegment], for sessionID: UUID) {
@@ -241,9 +282,89 @@ final class PlaybackCoordinator {
         trackPreferenceStore.record(choice, scope: nativePreferenceScope, profileID: progressStore.activeProfileID)
     }
 
+    var nativeUpNextEpisode: EpisodeItem? {
+        guard let context = nativeContext, context.episode != nil else { return nil }
+        return context.next
+    }
+
+    var hasNativeSources: Bool {
+        nativeContext != nil
+    }
+
+    func nativeSourceOptions() async throws -> [NativeSourceOption] {
+        guard let sessionID = nativeSession?.id, let context = nativeContext else {
+            throw PlaybackError.noSources
+        }
+        let result: Result<[AddonStream], PlaybackError>
+        if let episode = context.episode {
+            result = await sources(videoId: episode.videoId, isAnime: context.item.isAnime, mode: context.mode)
+        } else {
+            result = await sources(for: context.item, mode: context.mode)
+        }
+        let streams = try result.get()
+        guard let session = nativeSession, session.id == sessionID else { throw CancellationError() }
+        nativeSourceStreams = streams
+        return UpNextPlanner.sourceOptions(from: streams, current: session.videoURL)
+    }
+
+    func selectNativeSource(id: String) {
+        guard let stream = nativeSourceStreams.first(where: { $0.playbackURL?.absoluteString == id }),
+              let videoURL = stream.playbackURL else { return }
+        switchNativeSource(videoURL: videoURL, stream: stream)
+    }
+
+    func advanceToNextEpisode() async {
+        guard !isAdvancing,
+              let session = nativeSession,
+              let context = nativeContext,
+              let episode = context.episode,
+              let next = context.next else { return }
+        isAdvancing = true
+        defer { isAdvancing = false }
+        if let prefetchTask {
+            await prefetchTask.value
+        }
+        let resolved: Result<AddonStream, PlaybackError>
+        if let prefetched = prefetchedNext, prefetched.videoId == next.videoId {
+            resolved = .success(prefetched.stream)
+        } else {
+            resolved = await nextEpisodeStream(next, context: context)
+        }
+        guard nativeSession?.id == session.id else { return }
+        let stream: AddonStream
+        let videoURL: URL
+        switch resolved {
+        case .failure(let error):
+            completeNativeSession()
+            state = .failed(error)
+            return
+        case .success(let found):
+            guard let url = found.playbackURL else {
+                completeNativeSession()
+                state = .failed(.noSources)
+                return
+            }
+            stream = found
+            videoURL = url
+        }
+        let seriesId = PlaybackProgressStore.seriesKey(for: context.item) ?? episode.videoId
+        finalizeNativeSession(session)
+        progressStore.markEpisodeWatched(seriesId: seriesId, videoId: episode.videoId, next: Self.nextRef(next))
+        startEpisodeSession(
+            item: context.item,
+            episode: next,
+            next: context.timeline?.episodeAfter(next),
+            timeline: context.timeline,
+            mode: context.mode,
+            stream: stream,
+            videoURL: videoURL
+        )
+    }
+
     func updateNativePosition(_ seconds: Int) {
         guard let session = nativeSession, seconds > 0 else { return }
         nativePosition = seconds
+        prefetchNextEpisodeIfNeeded(position: seconds)
         guard let last = lastCheckpoint else {
             lastCheckpoint = seconds
             return
@@ -265,6 +386,10 @@ final class PlaybackCoordinator {
     func completeNativeSession() {
         guard let session = nativeSession else { return }
         nativeSession = nil
+        finalizeNativeSession(session)
+    }
+
+    private func finalizeNativeSession(_ session: NativePlaybackSession) {
         let videoURL = session.videoURL.absoluteString
         if let position = nativePosition {
             progressStore.applyCallback(lastPlayedURL: videoURL, position: position, duration: nativeDuration)
@@ -275,6 +400,111 @@ final class PlaybackCoordinator {
         nativePosition = nil
         nativeDuration = nil
         lastCheckpoint = nil
+        resetNativeContext()
+    }
+
+    private func resetNativeContext() {
+        nativeContext = nil
+        nativePreferenceScope = .global
+        nativeSourceStreams = []
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedNext = nil
+    }
+
+    private func prefetchNextEpisodeIfNeeded(position: Int) {
+        guard prefetchTask == nil,
+              let sessionID = nativeSession?.id,
+              let context = nativeContext,
+              context.episode != nil,
+              let next = context.next,
+              UpNextPlanner.shouldPrefetch(position: position, duration: nativeDuration) else { return }
+        prefetchTask = Task {
+            let result = await nextEpisodeStream(next, context: context)
+            guard !Task.isCancelled,
+                  nativeSession?.id == sessionID,
+                  nativeContext?.next?.videoId == next.videoId,
+                  case .success(let stream) = result else { return }
+            prefetchedNext = (next.videoId, stream)
+        }
+    }
+
+    private func nextEpisodeStream(
+        _ next: EpisodeItem,
+        context: NativePlaybackContext
+    ) async -> Result<AddonStream, PlaybackError> {
+        let query: (profile: StreamProfile, type: String)
+        switch PlaybackRequest.streamQuery(videoId: next.videoId, isAnime: context.item.isAnime, mode: context.mode) {
+        case .failure(let error):
+            return .failure(error)
+        case .success(let resolved):
+            query = resolved
+        }
+        switch await loadStreams(profile: query.profile, type: query.type, id: next.videoId) {
+        case .failure(let error):
+            return .failure(error)
+        case .success(let streams):
+            guard let stream = UpNextPlanner.stream(in: streams, bingeGroup: context.bingeGroup) else {
+                return .failure(.noSources)
+            }
+            return .success(stream)
+        }
+    }
+
+    private func startEpisodeSession(
+        item: MediaItem,
+        episode: EpisodeItem,
+        next: EpisodeItem?,
+        timeline: EpisodeTimeline?,
+        mode: PlaybackMode,
+        stream: AddonStream,
+        videoURL: URL
+    ) {
+        let seriesId = PlaybackProgressStore.seriesKey(for: item) ?? episode.videoId
+        beginNativeSession(
+            videoURL: videoURL,
+            title: item.title,
+            position: resumePosition(
+                seriesId: seriesId,
+                videoId: episode.videoId,
+                runtimeMinutes: episode.runtimeMinutes
+            ),
+            entry: PlaybackRequest.resumeEntry(for: item, seriesId: seriesId, episode: episode),
+            episodeContext: EpisodeSessionContext(
+                seriesId: seriesId,
+                videoId: episode.videoId,
+                season: episode.season,
+                episode: episode.episode,
+                next: next.map(Self.nextRef)
+            ),
+            contentKey: episode.videoId,
+            metadata: PlaybackRequest.sessionMetadata(
+                for: item,
+                subtitle: episode.title.isEmpty ? nil : episode.title,
+                runtimeMinutes: episode.runtimeMinutes,
+                seasonNumber: episode.season,
+                episodeNumber: episode.episode
+            ),
+            preferenceScope: .series(seriesId),
+            context: NativePlaybackContext(
+                item: item,
+                episode: episode,
+                next: next,
+                timeline: timeline,
+                mode: mode,
+                bingeGroup: stream.behaviorHints?.bingeGroup
+            )
+        )
+    }
+
+    private nonisolated static func nextRef(_ episode: EpisodeItem) -> NextEpisodeRef {
+        NextEpisodeRef(
+            videoId: episode.videoId,
+            season: episode.season,
+            episode: episode.episode,
+            title: episode.title,
+            runtimeMinutes: episode.runtimeMinutes
+        )
     }
 
     private func beginPlay() -> Int {
@@ -365,13 +595,23 @@ final class PlaybackCoordinator {
             runtimeMinutes: runtimeMinutes
         )
         if engine == .native {
-            startNativeSession(
+            beginNativeSession(
                 videoURL: videoURL,
                 title: item.title,
                 position: position,
                 entry: entry,
+                episodeContext: nil,
                 contentKey: contentId,
-                metadata: PlaybackRequest.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes)
+                metadata: PlaybackRequest.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes),
+                preferenceScope: .global,
+                context: NativePlaybackContext(
+                    item: item,
+                    episode: nil,
+                    next: nil,
+                    timeline: nil,
+                    mode: mode,
+                    bingeGroup: chosen.behaviorHints?.bingeGroup
+                )
             )
             return
         }
@@ -402,6 +642,7 @@ final class PlaybackCoordinator {
         item: MediaItem,
         episode: EpisodeItem,
         next: EpisodeItem?,
+        timeline: EpisodeTimeline?,
         mode: PlaybackMode,
         engine: PlayerEngine,
         preferredStream: AddonStream?,
@@ -431,6 +672,18 @@ final class PlaybackCoordinator {
             state = .failed(.noSources)
             return
         }
+        if engine == .native {
+            startEpisodeSession(
+                item: item,
+                episode: episode,
+                next: next,
+                timeline: timeline,
+                mode: mode,
+                stream: chosen,
+                videoURL: videoURL
+            )
+            return
+        }
         let seriesId = PlaybackProgressStore.seriesKey(for: item) ?? episode.videoId
         let position = resumePosition(
             seriesId: seriesId,
@@ -453,25 +706,6 @@ final class PlaybackCoordinator {
             }
         )
         let entry = PlaybackRequest.resumeEntry(for: item, seriesId: seriesId, episode: episode)
-        if engine == .native {
-            startNativeSession(
-                videoURL: videoURL,
-                title: item.title,
-                position: position,
-                entry: entry,
-                episodeContext: context,
-                contentKey: episode.videoId,
-                metadata: PlaybackRequest.sessionMetadata(
-                    for: item,
-                    subtitle: episode.title.isEmpty ? nil : episode.title,
-                    runtimeMinutes: episode.runtimeMinutes,
-                    seasonNumber: episode.season,
-                    episodeNumber: episode.episode
-                ),
-                preferenceScope: .series(seriesId)
-            )
-            return
-        }
         guard InfuseLauncher.isInstalled else {
             state = .failed(.infuseNotInstalled)
             return

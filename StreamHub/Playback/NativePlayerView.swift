@@ -5,6 +5,16 @@ struct NativePlayerView: View {
     let session: NativePlaybackSession
     let onClose: () -> Void
 
+    var body: some View {
+        NativePlayerSessionView(session: session, onClose: onClose)
+            .id(session.id)
+    }
+}
+
+private struct NativePlayerSessionView: View {
+    let session: NativePlaybackSession
+    let onClose: () -> Void
+
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @StateObject private var player = KSVideoPlayer.Coordinator()
     @State private var options: KSOptions
@@ -34,11 +44,18 @@ struct NativePlayerView: View {
         .onChange(of: session.segments) { _, segments in
             player.tvFeatures.skipSegments = Self.skipSegments(from: segments)
         }
-        .onReceive(player.timemodel.$currentTime) { coordinator?.updateNativePosition($0) }
+        .onReceive(player.timemodel.$currentTime) { seconds in
+            guard isCurrentSession else { return }
+            coordinator?.updateNativePosition(seconds)
+        }
         .onReceive(player.timemodel.$totalTime) { total in
-            guard total != Self.placeholderTotalTime else { return }
+            guard total != Self.placeholderTotalTime, isCurrentSession else { return }
             coordinator?.updateNativeDuration(total)
         }
+    }
+
+    private var isCurrentSession: Bool {
+        coordinator?.nativeSession?.id == session.id
     }
 
     private static let placeholderTotalTime = 1
@@ -70,6 +87,28 @@ struct NativePlayerView: View {
             guard let choice = Self.trackChoice(from: event) else { return }
             Self.apply(choice, to: options)
             coordinator.recordTrackChoice(choice, for: sessionID)
+        }
+        player.tvFeatures.upNext = coordinator.nativeUpNextEpisode.map { next in
+            TVUpNext(
+                item: TVUpNextItem(
+                    title: session.title,
+                    subtitle: UpNextPlanner.upNextSubtitle(for: next),
+                    artworkURL: next.thumbnailURL ?? session.metadata?.artworkURL
+                ),
+                onPlayNext: {
+                    Task { await coordinator.advanceToNextEpisode() }
+                }
+            )
+        }
+        if coordinator.hasNativeSources {
+            player.tvFeatures.sources = TVSourcesProvider(
+                load: {
+                    try await coordinator.nativeSourceOptions().map {
+                        TVSourceOption(id: $0.id, title: $0.title, subtitle: $0.subtitle, isSelected: $0.isSelected)
+                    }
+                },
+                onSelect: { coordinator.selectNativeSource(id: $0.id) }
+            )
         }
     }
 

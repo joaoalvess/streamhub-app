@@ -19,6 +19,10 @@ final class SeriesDetailViewModel {
         seasonTabs.indices.contains(selectedSeasonIndex) ? seasonTabs[selectedSeasonIndex] : nil
     }
 
+    var episodeTimeline: EpisodeTimeline {
+        timeline
+    }
+
     func load(item: MediaItem, provider: MetaProvider, store: PlaybackProgressStore?) async {
         phase = .loading
         let seriesId = PlaybackProgressStore.seriesKey(for: item) ?? item.contentId ?? ""
