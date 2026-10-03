@@ -8,6 +8,10 @@ struct HeroView: View {
     let items: [MediaItem]
     var focusedControl: FocusState<HeroControl?>.Binding? = nil
     var heroTint: Binding<Color>? = nil
+    var onPlay: (Int) -> Void = { _ in }
+    var onInfo: (Int) -> Void = { _ in }
+    var onToggleMyList: (MediaItem) -> Void = { _ in }
+    var isInMyList: (MediaItem) -> Bool = { _ in false }
     @State private var index = 0
     @State private var shownBackdropURL: URL?
 
@@ -175,7 +179,7 @@ struct HeroView: View {
     @ViewBuilder
     private func ctaRow(for item: MediaItem) -> some View {
         HStack(spacing: 24) {
-            Button(action: {}) {
+            Button(action: { onPlay(index) }) {
                 HStack(spacing: 10) {
                     Image(systemName: "play.fill")
                     Text("Reproduzir")
@@ -185,8 +189,8 @@ struct HeroView: View {
             .prefersDefaultFocus(in: heroFocus)
             .heroControlFocus(focusedControl, .play)
 
-            circleButton(symbol: "plus", control: .add, action: {})
-            circleButton(symbol: "info.circle", control: .info, action: {})
+            circleButton(symbol: isInMyList(item) ? "checkmark" : "plus", control: .add, action: { onToggleMyList(item) })
+            circleButton(symbol: "info.circle", control: .info, action: { onInfo(index) })
             circleButton(symbol: "chevron.right", control: .next, action: advance)
         }
         .focusScope(heroFocus)

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContinueWatchingRowView: View {
     let entries: [ResumeEntry]
+    var onRemove: (String) -> Void = { _ in }
     @Environment(DetailRouter.self) private var router: DetailRouter?
 
     private struct IndexedItem: Identifiable {
@@ -25,6 +26,11 @@ struct ContinueWatchingRowView: View {
                     ForEach(indexed) { entry in
                         ContinueWatchingCardView(item: entry.item) {
                             open(at: entry.index)
+                        }
+                        .contextMenu {
+                            Button("Remover de Continuar assistindo", role: .destructive) {
+                                onRemove(entry.id)
+                            }
                         }
                     }
                 }
