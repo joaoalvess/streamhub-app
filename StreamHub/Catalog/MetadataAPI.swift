@@ -1,19 +1,24 @@
 import Foundation
 
-enum MetadataAPIError: Error, Sendable {
+nonisolated enum MetadataAPIError: Error, Sendable {
     case invalidURL
     case badStatus(Int)
     case transport(any Error)
     case decoding(any Error)
 }
 
-struct MetadataAPI: Sendable {
+nonisolated struct MetadataAPI: Sendable {
     static let baseString =
         "https://aiometadata.elfhosted.com/stremio/b11959c7-94fd-4fd2-aa24-6655c4fd7164"
 
+    private static let resolvedBase: String = {
+        let base = SecretsStore.shared.metadataBase?.absoluteString ?? baseString
+        return base.hasSuffix("/") ? String(base.dropLast()) : base
+    }()
+
     let session: URLSession
 
-    nonisolated init(session: URLSession = .shared) { self.session = session }
+    init(session: URLSession = .shared) { self.session = session }
 
     func manifest(tag: String? = nil) async throws -> AddonManifest {
         var path = "manifest.json"
@@ -39,36 +44,33 @@ struct MetadataAPI: Sendable {
         return try await get(CatalogResponse.self, at: path).metas
     }
 
-    nonisolated static func searchPath(type: String, id: String, query: String) -> String? {
+    static func searchPath(type: String, id: String, query: String) -> String? {
         guard let encoded = query.addingPercentEncoding(withAllowedCharacters: searchValueAllowed) else {
             return nil
         }
         return "catalog/\(type)/\(id)/search=\(encoded).json"
     }
 
-    private nonisolated static let searchValueAllowed = CharacterSet(
+    private static let searchValueAllowed = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
     )
 
-    private func get<T: Decodable>(_ type: T.Type, at path: String) async throws -> T {
-        let base = SecretsStore.shared.metadataBase?.absoluteString ?? Self.baseString
-        guard let url = URL(string: base + "/" + path) else {
+    @concurrent
+    private func get<T: Decodable & Sendable>(_ type: T.Type, at path: String) async throws -> T {
+        guard let url = URL(string: Self.resolvedBase + "/" + path) else {
             throw MetadataAPIError.invalidURL
         }
-        let data: Data
-        let response: URLResponse
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
         do {
-            (data, response) = try await session.data(from: url)
-        } catch {
-            throw MetadataAPIError.transport(error)
-        }
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw MetadataAPIError.badStatus(http.statusCode)
-        }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw MetadataAPIError.decoding(error)
+            let (data, _) = try await HTTP.data(for: request, session: session)
+            return try HTTP.decode(T.self, from: data)
+        } catch let failure as HTTPFailure {
+            switch failure {
+            case .status(let code, _): throw MetadataAPIError.badStatus(code)
+            case .transport(let error): throw MetadataAPIError.transport(error)
+            case .decoding(let error): throw MetadataAPIError.decoding(error)
+            }
         }
     }
 }
