@@ -31,6 +31,9 @@ struct NativePlayerView: View {
             player.isScaleAspectFill = false
             configurePlayer()
         }
+        .onChange(of: session.segments) { _, segments in
+            player.tvFeatures.skipSegments = Self.skipSegments(from: segments)
+        }
         .onReceive(player.timemodel.$currentTime) { coordinator?.updateNativePosition($0) }
         .onReceive(player.timemodel.$totalTime) { total in
             guard total != Self.placeholderTotalTime else { return }
@@ -54,6 +57,23 @@ struct NativePlayerView: View {
         player.onPlaybackEnded = { reason in
             guard case .completed = reason else { return }
             close()
+        }
+        player.tvFeatures.skipSegments = Self.skipSegments(from: session.segments)
+    }
+
+    private static func skipSegments(from segments: [NativeSkipSegment]) -> [TVSkipSegment] {
+        segments.compactMap { segment in
+            guard segment.start.isFinite, segment.end.isFinite, segment.end > segment.start else { return nil }
+            return TVSkipSegment(range: segment.start...segment.end, kind: skipKind(segment.kind))
+        }
+    }
+
+    private static func skipKind(_ kind: NativeSkipSegment.Kind) -> TVSkipSegment.Kind {
+        switch kind {
+        case .intro: .intro
+        case .credits: .credits
+        case .recap: .recap
+        case .preview: .preview
         }
     }
 

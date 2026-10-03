@@ -43,6 +43,19 @@ nonisolated struct NativeSessionMetadata: Equatable {
     }
 }
 
+nonisolated struct NativeSkipSegment: Equatable, Sendable {
+    nonisolated enum Kind: Sendable {
+        case intro
+        case credits
+        case recap
+        case preview
+    }
+
+    let start: Double
+    let end: Double
+    let kind: Kind
+}
+
 nonisolated struct NativePlaybackSession: Identifiable, Equatable {
     let id = UUID()
     var videoURL: URL
@@ -50,4 +63,5 @@ nonisolated struct NativePlaybackSession: Identifiable, Equatable {
     let contentKey: String?
     let startSeconds: Int?
     var metadata: NativeSessionMetadata?
+    var segments: [NativeSkipSegment] = []
 }

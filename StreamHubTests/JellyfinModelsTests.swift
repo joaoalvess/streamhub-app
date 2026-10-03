@@ -97,6 +97,62 @@ struct JellyfinModelsTests {
         #expect(streams[2].type == "Subtitle")
     }
 
+    @Test func decodesMediaSegments() throws {
+        let json = Data(#"""
+        {
+          "Items": [
+            {
+              "Id": "segment-1",
+              "ItemId": "item-1",
+              "Type": "Intro",
+              "StartTicks": 0,
+              "EndTicks": 900000000
+            },
+            {
+              "Id": "segment-2",
+              "ItemId": "item-1",
+              "Type": "Outro",
+              "StartTicks": 12000000000,
+              "EndTicks": 13200000000
+            }
+          ],
+          "TotalRecordCount": 2,
+          "StartIndex": 0
+        }
+        """#.utf8)
+        let result = try JSONDecoder().decode(JellyfinMediaSegmentResult.self, from: json)
+        #expect(result.items.count == 2)
+        let intro = try #require(result.items.first)
+        #expect(intro.type == "Intro")
+        #expect(intro.startTicks == 0)
+        #expect(intro.endTicks == 900_000_000)
+        #expect(result.items[1].type == "Outro")
+        #expect(result.items[1].endTicks == 13_200_000_000)
+    }
+
+    @Test func decodesMediaSegmentWithUnknownType() throws {
+        let json = Data(#"""
+        {
+          "Items": [
+            { "Id": "segment-1", "ItemId": "item-1", "Type": "SomethingNew", "StartTicks": 10, "EndTicks": 20 },
+            { "Id": "segment-2", "ItemId": "item-1", "Type": "Recap", "StartTicks": 30, "EndTicks": 40 }
+          ],
+          "TotalRecordCount": 2,
+          "StartIndex": 0
+        }
+        """#.utf8)
+        let result = try JSONDecoder().decode(JellyfinMediaSegmentResult.self, from: json)
+        #expect(result.items.map(\.type) == ["SomethingNew", "Recap"])
+    }
+
+    @Test func decodesEmptyMediaSegmentList() throws {
+        let json = Data(#"""
+        { "Items": [], "TotalRecordCount": 0, "StartIndex": 0 }
+        """#.utf8)
+        let result = try JSONDecoder().decode(JellyfinMediaSegmentResult.self, from: json)
+        #expect(result.items.isEmpty)
+    }
+
     @Test func convertsTicksBothWays() {
         #expect(JellyfinTicks.seconds(901_370_000) == 90)
         #expect(JellyfinTicks.ticks(seconds: 90) == 900_000_000)

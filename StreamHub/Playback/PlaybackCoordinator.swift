@@ -211,6 +211,12 @@ final class PlaybackCoordinator {
         nativeSession = session
     }
 
+    func setNativeSegments(_ segments: [NativeSkipSegment], for sessionID: UUID) {
+        guard var session = nativeSession, session.id == sessionID, session.segments != segments else { return }
+        session.segments = segments
+        nativeSession = session
+    }
+
     func updateNativePosition(_ seconds: Int) {
         guard let session = nativeSession, seconds > 0 else { return }
         nativePosition = seconds

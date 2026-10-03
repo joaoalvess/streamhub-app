@@ -110,6 +110,17 @@ nonisolated struct JellyfinAPI {
         }
     }
 
+    func mediaSegments(itemId: String) async throws -> [JellyfinMediaSegment] {
+        try await withAuthRetry { context in
+            let result: JellyfinMediaSegmentResult = try await get(
+                path: Self.mediaSegmentsPath(itemId: itemId),
+                query: [],
+                context: context
+            )
+            return result.items
+        }
+    }
+
     nonisolated static func searchQuery(userId: String, term: String, limit: Int) -> [URLQueryItem] {
         [
             URLQueryItem(name: "userId", value: userId),
@@ -134,6 +145,10 @@ nonisolated struct JellyfinAPI {
             URLQueryItem(name: "limit", value: String(limit)),
             URLQueryItem(name: "fields", value: "MediaStreams")
         ]
+    }
+
+    nonisolated static func mediaSegmentsPath(itemId: String) -> String {
+        "/MediaSegments/\(itemId)"
     }
 
     func streamURL(itemId: String) async throws -> URL {

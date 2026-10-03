@@ -228,6 +228,26 @@ nonisolated extension JellyfinItem {
     }
 }
 
+nonisolated struct JellyfinMediaSegmentResult: Decodable, Sendable {
+    let items: [JellyfinMediaSegment]
+
+    enum CodingKeys: String, CodingKey {
+        case items = "Items"
+    }
+}
+
+nonisolated struct JellyfinMediaSegment: Decodable, Sendable {
+    let type: String?
+    let startTicks: Int64?
+    let endTicks: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case type = "Type"
+        case startTicks = "StartTicks"
+        case endTicks = "EndTicks"
+    }
+}
+
 nonisolated struct JellyfinPlaybackReport: Encodable, Sendable {
     let itemId: String
     let playSessionId: String
