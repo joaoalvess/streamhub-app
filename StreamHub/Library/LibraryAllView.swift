@@ -59,8 +59,7 @@ final class LibraryAllViewModel {
 
     func entryAppeared(_ entry: LibraryEntry) {
         guard phase == .loaded, hasMore, !isLoadingMore, !pageFailed else { return }
-        guard let index = entries.firstIndex(of: entry) else { return }
-        guard Self.shouldLoadMore(appearingIndex: index, count: entries.count, threshold: Self.loadMoreThreshold) else { return }
+        guard entries.suffix(Self.loadMoreThreshold).contains(where: { $0.id == entry.id }) else { return }
         Task { await loadNextPage() }
     }
 

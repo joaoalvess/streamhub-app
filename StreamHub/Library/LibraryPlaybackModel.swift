@@ -9,16 +9,20 @@ final class LibraryPlaybackModel {
 
     private let api: JellyfinAPI
     private var reporter: JellyfinPlaybackReporter?
+    private var isStarting = false
 
     init(api: JellyfinAPI = JellyfinAPI()) {
         self.api = api
     }
 
     func play(_ entry: LibraryEntry, coordinator: PlaybackCoordinator?) {
-        guard let coordinator else { return }
+        guard let coordinator, !isStarting, session(in: coordinator) == nil else { return }
+        isStarting = true
         Task {
+            defer { isStarting = false }
             do {
                 let url = try await api.streamURL(itemId: entry.id)
+                reporter?.stop()
                 coordinator.startNativeSession(
                     videoURL: url,
                     title: entry.name,

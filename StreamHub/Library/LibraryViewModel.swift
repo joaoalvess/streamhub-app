@@ -131,9 +131,9 @@ final class LibraryViewModel {
         phase = .loading
         let api = self.api
         let base = baseProvider()
+        async let resumeItems = (try? await api.resumeItems(limit: 20)) ?? []
+        async let latestItems = (try? await api.latestItems(limit: 30)) ?? []
         do {
-            let resumeTask = Task { (try? await api.resumeItems(limit: 20)) ?? [] }
-            let latestTask = Task { (try? await api.latestItems(limit: 30)) ?? [] }
             let views = try await api.userViews()
             var viewRows: [(Int, LibraryRow)] = []
             await withTaskGroup(of: (Int, LibraryRow?).self) { group in
@@ -156,8 +156,14 @@ final class LibraryViewModel {
                     }
                 }
             }
+            let resumed = await resumeItems
+            let latest = await latestItems
+            guard !Task.isCancelled else {
+                hasLoaded = false
+                return
+            }
             var loaded: [LibraryRow] = []
-            let resumeEntries = await resumeTask.value.map { LibraryEntry(item: $0, base: base) }
+            let resumeEntries = resumed.map { LibraryEntry(item: $0, base: base) }
             if !resumeEntries.isEmpty {
                 loaded.append(LibraryRow(
                     id: Self.resumeRowId,
@@ -166,7 +172,7 @@ final class LibraryViewModel {
                     entries: resumeEntries
                 ))
             }
-            let latestEntries = Self.dedupedByTitle(await latestTask.value.map { LibraryEntry(item: $0, base: base) })
+            let latestEntries = Self.dedupedByTitle(latest.map { LibraryEntry(item: $0, base: base) })
             if !latestEntries.isEmpty {
                 loaded.append(LibraryRow(
                     id: "latest",
