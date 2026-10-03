@@ -11,6 +11,7 @@ struct MediaWindowView: View {
     let startIndex: Int
 
     @State private var centerIndex: Int
+    @State private var autoplayPending: Bool
     @State private var isFullscreen = false
     @State private var showsInfo = false
     @State private var showsSources = false
@@ -26,10 +27,11 @@ struct MediaWindowView: View {
 
     private enum ScrollAnchor: Hashable { case top, episodes }
 
-    init(row: CatalogRow, startIndex: Int) {
+    init(row: CatalogRow, startIndex: Int, autoplay: Bool = false) {
         self.row = row
         self.startIndex = startIndex
         _centerIndex = State(initialValue: max(0, startIndex))
+        _autoplayPending = State(initialValue: autoplay)
     }
 
     var body: some View {
@@ -102,7 +104,16 @@ struct MediaWindowView: View {
         }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
         .onChange(of: centerIndex) { _, _ in
+            autoplayPending = false
             withAnimation(.easeOut(duration: 0.25)) { loaded = nil }
+        }
+        .onChange(of: isAutoplayReady) { _, ready in
+            guard ready, autoplayPending, let item = loaded?.item else { return }
+            autoplayPending = false
+            enterFullscreen()
+            if isPlayEnabled(for: item) {
+                play(item)
+            }
         }
         .task(id: centerIndex) { await loadAssets() }
         .task(id: centerIndex) { await loadSeries() }
@@ -133,6 +144,17 @@ struct MediaWindowView: View {
 
     private var isPlayLoading: Bool {
         coordinator?.state == .loading
+    }
+
+    private var isAutoplayReady: Bool {
+        guard let item = loaded?.item else { return false }
+        guard isSeriesLike(item) else { return true }
+        switch seriesModel.phase {
+        case .loaded, .unavailable, .failed:
+            return true
+        case .idle, .loading:
+            return false
+        }
     }
 
     private var showsEpisodeSection: Bool {

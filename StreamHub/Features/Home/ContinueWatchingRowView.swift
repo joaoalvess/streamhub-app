@@ -25,7 +25,7 @@ struct ContinueWatchingRowView: View {
                 LazyHStack(spacing: Theme.Metrics.cardSpacing) {
                     ForEach(indexed) { entry in
                         ContinueWatchingCardView(item: entry.item) {
-                            open(items: items, at: entry.index)
+                            open(at: entry.index)
                         }
                     }
                 }
@@ -38,10 +38,19 @@ struct ContinueWatchingRowView: View {
         }
     }
 
-    private func open(items: [MediaItem], at index: Int) {
+    private func open(at index: Int) {
         guard let router else { return }
-        let row = CatalogRow(staticTitle: "Continue assistindo", style: .continueWatching, items: items)
-        router.open(row: row, index: index)
+        router.open(row: .continueWatching(entries: entries), index: index)
+    }
+}
+
+extension CatalogRow {
+    static func continueWatching(entries: [ResumeEntry]) -> CatalogRow {
+        CatalogRow(
+            staticTitle: "Continue assistindo",
+            style: .continueWatching,
+            items: entries.map(MediaItem.init(entry:))
+        )
     }
 }
 

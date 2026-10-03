@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SearchView: View {
     @State private var model = SearchViewModel()
-    @State private var router = DetailRouter()
     @Environment(RecentSearchesStore.self) private var recentsStore: RecentSearchesStore?
 
     var body: some View {
@@ -17,18 +16,10 @@ struct SearchView: View {
             model.warmUpIfNeeded()
             await model.loadExploreIfNeeded()
         }
-        .environment(router)
-        .fullScreenCover(item: routerTarget) { target in
-            MediaWindowView(row: target.row, startIndex: target.index)
-        }
     }
 
     private var searchText: Binding<String> {
         Binding(get: { model.searchText }, set: { model.searchText = $0 })
-    }
-
-    private var routerTarget: Binding<DetailRouter.Target?> {
-        Binding(get: { router.target }, set: { router.target = $0 })
     }
 
     private var content: some View {

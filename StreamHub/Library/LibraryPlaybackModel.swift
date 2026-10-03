@@ -64,6 +64,11 @@ struct LibraryPlaybackPresentation: ViewModifier {
                     playback.closePlayer(coordinator: coordinator)
                 }
             }
+            .onChange(of: coordinator?.nativeSession?.id) { _, id in
+                if id == nil {
+                    playback.closePlayer(coordinator: coordinator)
+                }
+            }
             .alert("Não foi possível reproduzir", isPresented: alertPresented) {
                 Button("OK", role: .cancel) {}
             } message: {

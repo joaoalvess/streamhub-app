@@ -34,7 +34,6 @@ struct StreamHubApp: App {
                 .environment(coordinator.progressStore)
                 .environment(metaProvider)
                 .environment(recentSearches)
-                .onOpenURL { coordinator.handleIncomingURL($0) }
         }
     }
 }

@@ -7,10 +7,19 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AE4CBFAC3068E24B0031D238 /* TVServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AE4CBFAB3068E24B0031D238 /* TVServices.framework */; };
+		AE4CBFB33068E24B0031D238 /* StreamHubTopShelf.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AE4CBFA93068E24B0031D238 /* StreamHubTopShelf.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AEAEB7F12FE62C3D0096B66F /* Lumen in Frameworks */ = {isa = PBXBuildFile; productRef = AEAEB7F32FE62C3D0096B66F /* Lumen */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		AE4CBFB13068E24B0031D238 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AEAEB6B22FE62C3A0096B66F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AE4CBFA83068E24B0031D238;
+			remoteInfo = StreamHubTopShelf;
+		};
 		AEAEB6C82FE62C3D0096B66F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = AEAEB6B22FE62C3A0096B66F /* Project object */;
@@ -27,13 +36,41 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		AE4CBFB43068E24B0031D238 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				AE4CBFB33068E24B0031D238 /* StreamHubTopShelf.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		AE4CBFA93068E24B0031D238 /* StreamHubTopShelf.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StreamHubTopShelf.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE4CBFAB3068E24B0031D238 /* TVServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TVServices.framework; path = System/Library/Frameworks/TVServices.framework; sourceTree = SDKROOT; };
 		AEAEB6BA2FE62C3B0096B66F /* StreamHub.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = StreamHub.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEAEB6C72FE62C3D0096B66F /* StreamHubTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StreamHubTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AEAEB6D12FE62C3D0096B66F /* StreamHubUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StreamHubUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AE4CBFB83068E24B0031D238 /* Exceptions for "StreamHubTopShelf" folder in "StreamHubTopShelf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = AE4CBFA83068E24B0031D238 /* StreamHubTopShelf */;
+		};
+		AE4CBFBC3068E3E90031D238 /* Exceptions for "StreamHub" folder in "StreamHubTopShelf" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TopShelf/TopShelfShared.swift,
+			);
+			target = AE4CBFA83068E24B0031D238 /* StreamHubTopShelf */;
+		};
 		AEAEB6F02FE62C3D0096B66F /* Exceptions for "StreamHub" folder in "StreamHub" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -44,10 +81,19 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		AE4CBFAD3068E24B0031D238 /* StreamHubTopShelf */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AE4CBFB83068E24B0031D238 /* Exceptions for "StreamHubTopShelf" folder in "StreamHubTopShelf" target */,
+			);
+			path = StreamHubTopShelf;
+			sourceTree = "<group>";
+		};
 		AEAEB6BC2FE62C3B0096B66F /* StreamHub */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				AEAEB6F02FE62C3D0096B66F /* Exceptions for "StreamHub" folder in "StreamHub" target */,
+				AE4CBFBC3068E3E90031D238 /* Exceptions for "StreamHub" folder in "StreamHubTopShelf" target */,
 			);
 			path = StreamHub;
 			sourceTree = "<group>";
@@ -65,6 +111,12 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		AE4CBFA63068E24B0031D238 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				AE4CBFAC3068E24B0031D238 /* TVServices.framework in Frameworks */,
+			);
+		};
 		AEAEB6B72FE62C3B0096B66F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
@@ -84,12 +136,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		AE4CBFAA3068E24B0031D238 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				AE4CBFAB3068E24B0031D238 /* TVServices.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		AEAEB6B12FE62C3A0096B66F = {
 			isa = PBXGroup;
 			children = (
 				AEAEB6BC2FE62C3B0096B66F /* StreamHub */,
 				AEAEB6CA2FE62C3D0096B66F /* StreamHubTests */,
 				AEAEB6D42FE62C3D0096B66F /* StreamHubUITests */,
+				AE4CBFAD3068E24B0031D238 /* StreamHubTopShelf */,
+				AE4CBFAA3068E24B0031D238 /* Frameworks */,
 				AEAEB6BB2FE62C3B0096B66F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,6 +162,7 @@
 				AEAEB6BA2FE62C3B0096B66F /* StreamHub.app */,
 				AEAEB6C72FE62C3D0096B66F /* StreamHubTests.xctest */,
 				AEAEB6D12FE62C3D0096B66F /* StreamHubUITests.xctest */,
+				AE4CBFA93068E24B0031D238 /* StreamHubTopShelf.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,6 +170,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		AE4CBFA83068E24B0031D238 /* StreamHubTopShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AE4CBFB73068E24B0031D238 /* Build configuration list for PBXNativeTarget "StreamHubTopShelf" */;
+			buildPhases = (
+				AE4CBFA53068E24B0031D238 /* Sources */,
+				AE4CBFA63068E24B0031D238 /* Frameworks */,
+				AE4CBFA73068E24B0031D238 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				AE4CBFAD3068E24B0031D238 /* StreamHubTopShelf */,
+			);
+			name = StreamHubTopShelf;
+			productName = StreamHubTopShelf;
+			productReference = AE4CBFA93068E24B0031D238 /* StreamHubTopShelf.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		AEAEB6B92FE62C3B0096B66F /* StreamHub */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AEAEB6D92FE62C3D0096B66F /* Build configuration list for PBXNativeTarget "StreamHub" */;
@@ -114,8 +195,12 @@
 				AEAEB6B62FE62C3B0096B66F /* Sources */,
 				AEAEB6B72FE62C3B0096B66F /* Frameworks */,
 				AEAEB6B82FE62C3B0096B66F /* Resources */,
+				AE4CBFB43068E24B0031D238 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
+			);
+			dependencies = (
+				AE4CBFB23068E24B0031D238 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AEAEB6BC2FE62C3B0096B66F /* StreamHub */,
@@ -180,6 +265,9 @@
 				LastSwiftUpdateCheck = 2700;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					AE4CBFA83068E24B0031D238 = {
+						CreatedOnToolsVersion = 27.0;
+					};
 					AEAEB6B92FE62C3B0096B66F = {
 						CreatedOnToolsVersion = 27.0;
 					};
@@ -213,11 +301,17 @@
 				AEAEB6B92FE62C3B0096B66F /* StreamHub */,
 				AEAEB6C62FE62C3D0096B66F /* StreamHubTests */,
 				AEAEB6D02FE62C3D0096B66F /* StreamHubUITests */,
+				AE4CBFA83068E24B0031D238 /* StreamHubTopShelf */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		AE4CBFA73068E24B0031D238 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
 		AEAEB6B82FE62C3B0096B66F /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
@@ -236,6 +330,11 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		AE4CBFA53068E24B0031D238 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 		AEAEB6B62FE62C3B0096B66F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
@@ -254,6 +353,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		AE4CBFB23068E24B0031D238 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AE4CBFA83068E24B0031D238 /* StreamHubTopShelf */;
+			targetProxy = AE4CBFB13068E24B0031D238 /* PBXContainerItemProxy */;
+		};
 		AEAEB6C92FE62C3D0096B66F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = AEAEB6B92FE62C3B0096B66F /* StreamHub */;
@@ -267,6 +371,66 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		AE4CBFB53068E24B0031D238 /* Debug configuration for PBXNativeTarget "StreamHubTopShelf" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StreamHubTopShelf/StreamHubTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StreamHubTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = StreamHubTopShelf;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = joaoalvess.StreamHub.topshelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Debug;
+		};
+		AE4CBFB63068E24B0031D238 /* Release configuration for PBXNativeTarget "StreamHubTopShelf" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StreamHubTopShelf/StreamHubTopShelf.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = J924GWS9NA;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StreamHubTopShelf/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = StreamHubTopShelf;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = joaoalvess.StreamHub.topshelf;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 3;
+			};
+			name = Release;
+		};
 		AEAEB6D72FE62C3D0096B66F /* Debug configuration for PBXProject "StreamHub" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -393,6 +557,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = StreamHub/StreamHub.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J924GWS9NA;
@@ -408,6 +573,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = joaoalvess.StreamHub;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -423,6 +589,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = StreamHub/StreamHub.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J924GWS9NA;
@@ -438,6 +605,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = joaoalvess.StreamHub;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -535,6 +703,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		AE4CBFB73068E24B0031D238 /* Build configuration list for PBXNativeTarget "StreamHubTopShelf" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AE4CBFB53068E24B0031D238 /* Debug configuration for PBXNativeTarget "StreamHubTopShelf" */,
+				AE4CBFB63068E24B0031D238 /* Release configuration for PBXNativeTarget "StreamHubTopShelf" */,
+			);
+			defaultConfigurationName = Release;
+		};
 		AEAEB6B52FE62C3B0096B66F /* Build configuration list for PBXProject "StreamHub" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
