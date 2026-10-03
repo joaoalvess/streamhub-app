@@ -5,6 +5,7 @@ import SwiftUI
 /// voltar fecha (tratado pela MediaWindowView).
 struct InfoModalView: View {
     let item: MediaItem
+    var qualityBadges: [String] = []
 
     var body: some View {
         ZStack {
@@ -40,11 +41,20 @@ struct InfoModalView: View {
                         .padding(.top, 4)
                 }
 
-                if !item.yearRuntimeLabel.isEmpty {
-                    Text(item.yearRuntimeLabel)
-                        .font(Theme.Font.meta)
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.top, 8)
+                if !item.yearRuntimeLabel.isEmpty || !qualityBadges.isEmpty {
+                    HStack(spacing: 14) {
+                        if !item.yearRuntimeLabel.isEmpty {
+                            Text(item.yearRuntimeLabel)
+                                .font(Theme.Font.meta)
+                                .foregroundStyle(Theme.textPrimary)
+                        }
+                        if !qualityBadges.isEmpty {
+                            QualityBadgesView(badges: qualityBadges)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.top, 8)
+                    .animation(.easeOut(duration: 0.25), value: qualityBadges)
                 }
             }
             .padding(48)

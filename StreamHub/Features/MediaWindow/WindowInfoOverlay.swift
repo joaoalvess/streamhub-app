@@ -28,6 +28,7 @@ struct WindowInfoOverlay: View {
     var playbackMode: PlaybackMode = .dubbed
     var playerEngine: PlayerEngine = .infuse
     var isInMyList = false
+    var qualityBadges: [String] = []
     var onPlay: () -> Void = {}
     var onCycleMode: () -> Void = {}
     var onHoldMode: () -> Void = {}
@@ -121,13 +122,31 @@ struct WindowInfoOverlay: View {
             .lineLimit(3)
     }
 
-    @ViewBuilder
     private var metaRow: some View {
-        if !item.yearRuntimeLabel.isEmpty {
-            Text(item.yearRuntimeLabel)
+        ZStack(alignment: .leading) {
+            Text(verbatim: " ")
                 .font(Theme.Font.meta)
-                .foregroundStyle(Theme.textPrimary)
+                .hidden()
+            HStack(spacing: 14) {
+                if !item.yearRuntimeLabel.isEmpty {
+                    Text(item.yearRuntimeLabel)
+                        .font(Theme.Font.meta)
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize()
+                        .layoutPriority(1)
+                }
+                if !qualityBadges.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        QualityBadgesView(badges: qualityBadges)
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(4)))
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(3)))
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(2)))
+                    }
+                    .transition(.opacity)
+                }
+            }
         }
+        .animation(.easeOut(duration: 0.25), value: qualityBadges)
     }
 
     private var ctaRow: some View {
