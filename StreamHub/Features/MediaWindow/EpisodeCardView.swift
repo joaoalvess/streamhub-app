@@ -27,6 +27,9 @@ struct EpisodeCardView: View {
             .scaleEffect(isFocused ? 1.05 : 1)
             .shadow(color: .black.opacity(isFocused ? 0.4 : 0), radius: 20, y: 10)
             .animation(.easeOut(duration: 0.18), value: isFocused)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityTitle)
+            .accessibilityValue(accessibilityValue)
         }
         .buttonStyle(EpisodeCardButtonStyle())
         .frame(width: Theme.Size.episodeCardWidth)
@@ -147,7 +150,27 @@ struct EpisodeCardView: View {
 
     private var durationLabel: String? {
         guard episode.isReleased else { return nil }
-        return episode.runtimeMinutes.map { "\($0) min" }
+        return episode.runtimeMinutes.map { DurationFormat.label(minutes: $0) }
+    }
+
+    private var accessibilityTitle: String {
+        switch style {
+        case .episode: "Episódio \(episode.episode), \(episode.title)"
+        case .special: episode.title
+        }
+    }
+
+    private var accessibilityValue: String {
+        let watchState: String?
+        if showsProgress, let progress {
+            watchState = "\(Int((progress * 100).rounded()))% assistido"
+        } else if isWatched {
+            watchState = "Assistido"
+        } else {
+            watchState = nil
+        }
+        let detail = episode.isReleased ? durationLabel : dateLabel
+        return [watchState, detail].compactMap { $0 }.joined(separator: ", ")
     }
 
     private var dateLabel: String? {

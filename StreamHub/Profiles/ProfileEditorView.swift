@@ -217,6 +217,7 @@ struct ProfileEditorView: View {
         progressStore?.removeData(for: profile.id)
         recentSearchesStore?.removeData(for: profile.id)
         myListStore?.removeData(for: profile.id)
+        PlaybackMode.removeStored(profileId: profile.id)
         dismiss()
     }
 }

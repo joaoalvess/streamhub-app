@@ -81,6 +81,12 @@ struct JellyfinRequestTests {
         #expect(query.contains(URLQueryItem(name: "fields", value: "MediaStreams")))
     }
 
+    @Test func buildsMediaSegmentsURLWithoutTypeFilter() throws {
+        let base = try #require(URL(string: "https://jellyfin.example"))
+        let url = try #require(JellyfinAPI.url(base: base, path: JellyfinAPI.mediaSegmentsPath(itemId: "item1"), query: []))
+        #expect(url.absoluteString == "https://jellyfin.example/MediaSegments/item1")
+    }
+
     @Test func playbackEventPathsAreCanonical() {
         #expect(JellyfinPlaybackEvent.start.path == "/Sessions/Playing")
         #expect(JellyfinPlaybackEvent.progress.path == "/Sessions/Playing/Progress")

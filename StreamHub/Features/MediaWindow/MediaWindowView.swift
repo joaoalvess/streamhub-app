@@ -6,6 +6,7 @@ import SwiftUI
 struct MediaWindowView: View {
     static let expandDuration: TimeInterval = 0.55
     private static let seriesDebounce: Duration = .milliseconds(350)
+    private static let qualityDebounce: Duration = .milliseconds(600)
 
     let row: CatalogRow
     let startIndex: Int
@@ -21,11 +22,13 @@ struct MediaWindowView: View {
     @State private var playbackMode: PlaybackMode = .dubbed
     @State private var playerEngine: PlayerEngine = .stored()
     @State private var seriesModel = SeriesDetailViewModel()
+    @State private var qualityResult: QualityResult?
     @FocusState private var focus: WindowFocus?
     @Environment(\.dismiss) private var dismiss
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @Environment(MetaProvider.self) private var metaProvider: MetaProvider?
     @Environment(MyListStore.self) private var myList: MyListStore?
+    @Environment(ToastCenter.self) private var toasts: ToastCenter?
 
     private enum ScrollAnchor: Hashable { case top, episodes }
 
@@ -83,7 +86,7 @@ struct MediaWindowView: View {
                     }
 
                     if showsInfo {
-                        InfoModalView(item: loaded.item)
+                        InfoModalView(item: loaded.item, qualityBadges: visibleQuality?.badges ?? [])
                             .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
 
@@ -105,6 +108,9 @@ struct MediaWindowView: View {
             handleBack()
         }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
+        .onAppear {
+            playbackMode = .stored(profileId: coordinator?.progressStore.activeProfileID)
+        }
         .onChange(of: centerIndex) { _, _ in
             hasLeftStart = true
             autoplayPending = false
@@ -120,6 +126,7 @@ struct MediaWindowView: View {
         }
         .task(id: centerIndex) { await loadAssets() }
         .task(id: centerIndex) { await loadSeries(after: isAtInitialTitle ? .zero : Self.seriesDebounce) }
+        .task(id: qualityRequest) { await loadQuality() }
         .onDisappear {
             guard let coordinator, coordinator.nativeSession == nil else { return }
             coordinator.invalidatePendingPlay()
@@ -136,7 +143,7 @@ struct MediaWindowView: View {
                 .zIndex(1)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: nativeSession?.id)
+        .animation(.easeOut(duration: 0.2), value: nativeSession != nil)
         .onChange(of: nativeSession?.id) { previousID, currentID in
             if previousID != nil, currentID == nil {
                 focus = overlayReturnFocus
@@ -187,10 +194,12 @@ struct MediaWindowView: View {
             playbackMode: playbackMode,
             playerEngine: playerEngine,
             isInMyList: myList?.contains(loaded.item) ?? false,
+            qualityBadges: visibleQuality?.badges ?? [],
             onPlay: { play(loaded.item) },
             onCycleMode: {
                 guard !showsSources else { return }
                 playbackMode = playbackMode.next
+                playbackMode.store(profileId: coordinator?.progressStore.activeProfileID)
             },
             onHoldMode: { holdMode(loaded.item) },
             onToggleEngine: {
@@ -198,7 +207,7 @@ struct MediaWindowView: View {
                 playerEngine = playerEngine.next
                 playerEngine.store()
             },
-            onAdd: { myList?.toggle(loaded.item) },
+            onAdd: { toggleMyList(loaded.item) },
             onInfo: showDetails,
             onShowDetails: showDetails
         )
@@ -362,8 +371,16 @@ struct MediaWindowView: View {
     private func playEpisode(_ episode: EpisodeItem, item: MediaItem) {
         guard let coordinator else { return }
         let next = seriesModel.episodeAfter(episode)
+        let timeline = seriesModel.episodeTimeline
         Task {
-            await coordinator.play(item: item, episode: episode, next: next, mode: playbackMode, engine: playerEngine)
+            await coordinator.play(
+                item: item,
+                episode: episode,
+                next: next,
+                timeline: timeline,
+                mode: playbackMode,
+                engine: playerEngine
+            )
         }
     }
 
@@ -384,11 +401,13 @@ struct MediaWindowView: View {
                 )
             }
         case .episode(let episode, let next):
+            let timeline = seriesModel.episodeTimeline
             Task {
                 await coordinator.play(
                     item: item,
                     episode: episode,
                     next: next,
+                    timeline: timeline,
                     mode: playbackMode,
                     engine: playerEngine,
                     preferredStream: preferredStream
@@ -399,6 +418,16 @@ struct MediaWindowView: View {
 
     private func resolvePlayTarget(for item: MediaItem) -> PlayResolution {
         PlayPlanner.resolveTarget(for: item, in: playContext(for: item))
+    }
+
+    private func toggleMyList(_ item: MediaItem) {
+        guard let myList else { return }
+        let wasInList = myList.contains(item)
+        myList.toggle(item)
+        toasts?.show(
+            wasInList ? "Removido da Minha lista" : "Adicionado à Minha lista",
+            systemImage: wasInList ? "xmark" : "checkmark"
+        )
     }
 
     private func holdMode(_ item: MediaItem) {
@@ -421,6 +450,32 @@ struct MediaWindowView: View {
         }
     }
 
+    private var qualityRequest: QualityRequest? {
+        guard isFullscreen, let coordinator, let item = loaded?.item,
+              case .target(let target) = resolvePlayTarget(for: item) else { return nil }
+        if case .movie = target, coordinator.route(for: item) != .infuse {
+            return nil
+        }
+        return QualityRequest(item: item, mode: playbackMode, target: target)
+    }
+
+    private var visibleQuality: MediaQuality? {
+        guard let qualityResult, qualityResult.request == qualityRequest else { return nil }
+        return qualityResult.quality
+    }
+
+    private func loadQuality() async {
+        qualityResult = nil
+        guard let request = qualityRequest else { return }
+        try? await Task.sleep(for: Self.qualityDebounce)
+        guard !Task.isCancelled else { return }
+        let result = await loadSources(for: request.target, item: request.item)
+        guard !Task.isCancelled, qualityRequest == request,
+              case .success(let streams) = result,
+              let stream = streams.first(where: \.isPlayable) else { return }
+        qualityResult = QualityResult(request: request, quality: StreamQualityParser.parse(stream))
+    }
+
     private func selectSource(_ stream: AddonStream, item: MediaItem) {
         withAnimation(.easeOut(duration: 0.3)) { showsSources = false }
         focus = .mode
@@ -429,7 +484,7 @@ struct MediaWindowView: View {
         if let contentKey = PlayPlanner.contentKey(for: target, item: item),
            coordinator.nativeSession?.contentKey == contentKey,
            let videoURL = stream.playbackURL {
-            coordinator.switchNativeSource(videoURL: videoURL)
+            coordinator.switchNativeSource(videoURL: videoURL, stream: stream)
             return
         }
         start(target, item: item, coordinator: coordinator, preferredStream: stream)
@@ -515,5 +570,22 @@ struct MediaWindowView: View {
             return cached
         }
         return await ImagePipeline.shared.image(for: url, maxPixelSize: maxPixelSize)
+    }
+}
+
+private nonisolated struct QualityResult {
+    let request: QualityRequest
+    let quality: MediaQuality
+}
+
+private nonisolated struct QualityRequest: Equatable {
+    let item: MediaItem
+    let mode: PlaybackMode
+    let target: PlayTarget
+
+    static func == (lhs: QualityRequest, rhs: QualityRequest) -> Bool {
+        lhs.item.id == rhs.item.id
+            && lhs.mode == rhs.mode
+            && PlayPlanner.contentKey(for: lhs.target, item: lhs.item) == PlayPlanner.contentKey(for: rhs.target, item: rhs.item)
     }
 }

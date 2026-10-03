@@ -44,11 +44,130 @@ nonisolated struct JellyfinMediaStream: Decodable, Sendable {
     let type: String?
     let height: Int?
     let language: String?
+    let width: Int?
+    let codec: String?
+    let profile: String?
+    let title: String?
+    let displayTitle: String?
+    let channels: Int?
+    let videoRange: String?
+    let videoRangeType: String?
+    let isHearingImpaired: Bool?
+
+    init(
+        type: String?,
+        height: Int? = nil,
+        language: String? = nil,
+        width: Int? = nil,
+        codec: String? = nil,
+        profile: String? = nil,
+        title: String? = nil,
+        displayTitle: String? = nil,
+        channels: Int? = nil,
+        videoRange: String? = nil,
+        videoRangeType: String? = nil,
+        isHearingImpaired: Bool? = nil
+    ) {
+        self.type = type
+        self.height = height
+        self.language = language
+        self.width = width
+        self.codec = codec
+        self.profile = profile
+        self.title = title
+        self.displayTitle = displayTitle
+        self.channels = channels
+        self.videoRange = videoRange
+        self.videoRangeType = videoRangeType
+        self.isHearingImpaired = isHearingImpaired
+    }
 
     enum CodingKeys: String, CodingKey {
         case type = "Type"
         case height = "Height"
         case language = "Language"
+        case width = "Width"
+        case codec = "Codec"
+        case profile = "Profile"
+        case title = "Title"
+        case displayTitle = "DisplayTitle"
+        case channels = "Channels"
+        case videoRange = "VideoRange"
+        case videoRangeType = "VideoRangeType"
+        case isHearingImpaired = "IsHearingImpaired"
+    }
+}
+
+nonisolated extension JellyfinMediaStream {
+    var dynamicRanges: Set<MediaQuality.DynamicRange> {
+        let rangeType = (videoRangeType ?? "").lowercased()
+        var ranges: Set<MediaQuality.DynamicRange> = []
+        if rangeType.hasPrefix("dovi"), rangeType != "doviinvalid" {
+            ranges.insert(.dolbyVision)
+        }
+        if rangeType.contains("hdr10plus") {
+            ranges.insert(.hdr10Plus)
+        } else if rangeType.contains("hdr10") {
+            ranges.insert(.hdr10)
+        }
+        if rangeType.contains("hlg") {
+            ranges.insert(.hlg)
+        }
+        if ranges.isEmpty, videoRange?.caseInsensitiveCompare("HDR") == .orderedSame {
+            ranges.insert(.hdr10)
+        }
+        return ranges
+    }
+
+    var audioFormats: Set<MediaQuality.AudioFormat> {
+        let details = [profile, displayTitle].compactMap { $0 }.joined(separator: " ").lowercased()
+        var formats: Set<MediaQuality.AudioFormat> = []
+        if details.contains("atmos") {
+            formats.insert(.atmos)
+        }
+        switch (codec ?? "").lowercased() {
+        case "truehd":
+            formats.insert(.trueHD)
+        case "eac3":
+            formats.insert(.dolbyDigitalPlus)
+        case "ac3":
+            formats.insert(.dolbyDigital)
+        case "dts", "dca":
+            if details.contains("dts:x") || details.contains("dts-x") {
+                formats.insert(.dtsX)
+            } else if details.contains("dts-hd") {
+                formats.insert(.dtsHD)
+            } else {
+                formats.insert(.dts)
+            }
+        default:
+            break
+        }
+        return formats
+    }
+
+    var isAudioDescription: Bool {
+        [title, displayTitle].contains { label in
+            guard let label = label?.lowercased() else { return false }
+            return label.contains("audio description") || label.contains("audiodescri")
+        }
+    }
+}
+
+nonisolated extension MediaQuality {
+    init(jellyfin streams: [JellyfinMediaStream]) {
+        let video = streams.filter { $0.type == "Video" }
+        let audio = streams.filter { $0.type == "Audio" }
+        let subtitles = streams.filter { $0.type == "Subtitle" }
+        self.init(
+            resolution: video.compactMap { Resolution(width: $0.width, height: $0.height) }.max(),
+            dynamicRange: Set(video.flatMap(\.dynamicRanges)),
+            audio: Set(audio.flatMap(\.audioFormats)),
+            channels: audio.compactMap { $0.channels.flatMap(Channels.init(count:)) }.max(),
+            hasPortugueseSubtitles: subtitles.contains { $0.language.map(LibraryEntry.isPortuguese) ?? false },
+            hasClosedCaptions: subtitles.contains { $0.isHearingImpaired == true },
+            hasAudioDescription: audio.contains(where: \.isAudioDescription)
+        )
     }
 }
 
@@ -106,6 +225,26 @@ nonisolated extension JellyfinItem {
     var positionSeconds: Int? {
         guard let ticks = userData?.playbackPositionTicks, ticks > 0 else { return nil }
         return JellyfinTicks.seconds(ticks)
+    }
+}
+
+nonisolated struct JellyfinMediaSegmentResult: Decodable, Sendable {
+    let items: [JellyfinMediaSegment]
+
+    enum CodingKeys: String, CodingKey {
+        case items = "Items"
+    }
+}
+
+nonisolated struct JellyfinMediaSegment: Decodable, Sendable {
+    let type: String?
+    let startTicks: Int64?
+    let endTicks: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case type = "Type"
+        case startTicks = "StartTicks"
+        case endTicks = "EndTicks"
     }
 }
 

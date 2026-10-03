@@ -9,6 +9,7 @@ final class LibraryPlaybackModel {
 
     private let api: JellyfinAPI
     private var reporter: JellyfinPlaybackReporter?
+    private var segmentsTask: Task<Void, Never>?
     private var isStarting = false
 
     init(api: JellyfinAPI = JellyfinAPI()) {
@@ -31,6 +32,9 @@ final class LibraryPlaybackModel {
                     metadata: entry.sessionMetadata()
                 )
                 activeSessionID = coordinator.nativeSession?.id
+                if let sessionID = activeSessionID {
+                    loadSegments(itemId: entry.id, sessionID: sessionID, coordinator: coordinator)
+                }
                 let sessionReporter = JellyfinPlaybackReporter(api: api, coordinator: coordinator)
                 sessionReporter.start(itemId: entry.id, positionSeconds: entry.startSeconds ?? 0)
                 reporter = sessionReporter
@@ -45,8 +49,20 @@ final class LibraryPlaybackModel {
         activeSessionID = nil
         reporter?.stop()
         reporter = nil
+        segmentsTask?.cancel()
+        segmentsTask = nil
         coordinator?.completeNativeSession()
         onSessionEnded?()
+    }
+
+    private func loadSegments(itemId: String, sessionID: UUID, coordinator: PlaybackCoordinator) {
+        segmentsTask?.cancel()
+        segmentsTask = Task { [api] in
+            guard let items = try? await api.mediaSegments(itemId: itemId), !Task.isCancelled else { return }
+            let segments = JellyfinSegmentMapper.skipSegments(from: items)
+            guard !segments.isEmpty else { return }
+            coordinator.setNativeSegments(segments, for: sessionID)
+        }
     }
 
     func session(in coordinator: PlaybackCoordinator?) -> NativePlaybackSession? {

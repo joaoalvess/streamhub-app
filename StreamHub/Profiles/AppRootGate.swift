@@ -20,8 +20,10 @@ struct AppRootGate: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: profileStore.activeProfileID)
+        .toastHost()
         .fullScreenCover(item: routerTarget) { target in
             MediaWindowView(row: target.row, startIndex: target.index, autoplay: target.autoplay)
+                .toastHost()
         }
         .environment(router)
         .onChange(of: profileStore.activeProfileID, initial: true) { _, id in
@@ -32,6 +34,8 @@ struct AppRootGate: View {
         }
         .task(id: topShelfSnapshot) {
             guard let snapshot = topShelfSnapshot else { return }
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
             TopShelfPublisher.publish(snapshot)
             await TopShelfArtwork.prepare(snapshot)
         }

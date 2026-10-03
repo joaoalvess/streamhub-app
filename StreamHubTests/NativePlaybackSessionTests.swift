@@ -249,4 +249,72 @@ struct NativePlaybackSessionTests {
 
         #expect(coordinator.progressStore.entries.isEmpty)
     }
+
+    @Test func firstTickIsBaselineAndCheckpointWaitsForInterval() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        coordinator.updateNativePosition(100)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 0)
+
+        coordinator.updateNativePosition(114)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 0)
+
+        coordinator.updateNativePosition(115)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 115)
+    }
+
+    @Test func backwardSeekBeyondIntervalCheckpoints() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        coordinator.updateNativePosition(600)
+        coordinator.updateNativePosition(300)
+
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 300)
+    }
+
+    @Test func checkpointKeepsSessionForFinalCompletion() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry(runtimeMinutes: 100))
+        coordinator.updateNativePosition(100)
+        coordinator.updateNativePosition(200)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 200)
+
+        coordinator.updateNativePosition(5_700)
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 200)
+
+        coordinator.completeNativeSession()
+        #expect(coordinator.progressStore.entries.isEmpty)
+    }
+
+    @Test func checkpointBaselineResetsForNextSession() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        coordinator.updateNativePosition(100)
+        coordinator.completeNativeSession()
+
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: 100, entry: entry())
+        coordinator.updateNativePosition(500)
+
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 100)
+    }
+
+    @Test func checkpointFollowsSwitchedSource() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        coordinator.updateNativePosition(100)
+        coordinator.switchNativeSource(videoURL: try #require(URL(string: "https://cdn/b.mkv")))
+        coordinator.updateNativePosition(200)
+
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 200)
+    }
+
+    @Test func checkpointDoesNotResurrectEntryRemovedDuringPlayback() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())
+        coordinator.updateNativePosition(100)
+        coordinator.progressStore.remove(contentId: "tt0111161")
+        coordinator.updateNativePosition(200)
+
+        #expect(coordinator.progressStore.entries.isEmpty)
+    }
 }

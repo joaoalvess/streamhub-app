@@ -11,7 +11,10 @@ struct SourcesModalView: View {
         case failed(String)
     }
 
+    private static let retryFocus = -1
+
     @State private var phase: Phase = .loading
+    @State private var attempt = 0
     @FocusState private var focusedIndex: Int?
 
     var body: some View {
@@ -30,12 +33,15 @@ struct SourcesModalView: View {
             .frame(maxWidth: 920, alignment: .leading)
             .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
-        .focusable(!hasRows)
+        .focusable(!hasRows && !showsRetry)
         .defaultFocus($focusedIndex, 0)
         .onChange(of: hasRows) { _, has in
             if has { focusedIndex = 0 }
         }
-        .task {
+        .onChange(of: showsRetry) { _, shows in
+            if shows { focusedIndex = Self.retryFocus }
+        }
+        .task(id: attempt) {
             switch await loadSources() {
             case .success(let streams):
                 phase = .loaded(streams)
@@ -50,6 +56,19 @@ struct SourcesModalView: View {
         return false
     }
 
+    private var showsRetry: Bool {
+        switch phase {
+        case .loading: false
+        case .loaded(let streams): streams.isEmpty
+        case .failed: true
+        }
+    }
+
+    private func retry() {
+        phase = .loading
+        attempt += 1
+    }
+
     @ViewBuilder
     private var content: some View {
         switch phase {
@@ -62,9 +81,7 @@ struct SourcesModalView: View {
                     .foregroundStyle(Theme.textSecondary)
             }
         case .loaded(let streams) where streams.isEmpty:
-            Text(PlaybackCoordinator.PlaybackError.noSources.message)
-                .font(Theme.Font.meta)
-                .foregroundStyle(Theme.textSecondary)
+            failure(PlaybackCoordinator.PlaybackError.noSources.message)
         case .loaded(let streams):
             ScrollView(.vertical) {
                 VStack(spacing: 12) {
@@ -82,9 +99,19 @@ struct SourcesModalView: View {
             }
             .frame(maxHeight: 680)
         case .failed(let message):
+            failure(message)
+        }
+    }
+
+    private func failure(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 28) {
             Text(message)
                 .font(Theme.Font.meta)
                 .foregroundStyle(Theme.textSecondary)
+
+            Button("Tentar novamente", action: retry)
+                .buttonStyle(HeroButtonStyle(shape: .capsule, isActive: focusedIndex == Self.retryFocus))
+                .focused($focusedIndex, equals: Self.retryFocus)
         }
     }
 

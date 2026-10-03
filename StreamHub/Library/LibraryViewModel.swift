@@ -12,6 +12,7 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
     let backdropURL: URL?
     let resolutionLabel: String?
     let audioLabel: String?
+    let quality: MediaQuality
 
     init(item: JellyfinItem, base: URL?) {
         id = item.id
@@ -36,15 +37,11 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
         }
         resolutionLabel = Self.resolutionBadge(streams: item.mediaStreams)
         audioLabel = Self.audioBadge(streams: item.mediaStreams)
+        quality = MediaQuality(jellyfin: item.mediaStreams ?? [])
     }
 
     nonisolated static func resolutionBadge(streams: [JellyfinMediaStream]?) -> String? {
-        let heights = (streams ?? []).compactMap { $0.type == "Video" ? $0.height : nil }
-        guard let height = heights.max(), height > 0 else { return nil }
-        if height >= 2000 { return "4K" }
-        if height >= 1000 { return "1080p" }
-        if height >= 690 { return "720p" }
-        return "SD"
+        MediaQuality(jellyfin: streams ?? []).resolution?.label
     }
 
     nonisolated static func audioBadge(streams: [JellyfinMediaStream]?) -> String? {

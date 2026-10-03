@@ -18,17 +18,30 @@ struct MediaCardView: View {
 struct PosterCard: View {
     let item: MediaItem
     var rank: Int? = nil
+    var showsProgress: Bool = true
     @Environment(\.isFocused) private var isFocused
+    @Environment(PlaybackProgressStore.self) private var store: PlaybackProgressStore?
 
     var body: some View {
+        let badge = progressBadge
         poster
             .frame(width: Theme.Size.posterWidth, height: Theme.Size.posterHeight)
             .overlay { Theme.genreScrim.opacity(isFocused ? 1 : 0) }
-            .overlay(alignment: .bottom) { genreLabel.opacity(isFocused ? 1 : 0) }
+            .overlay(alignment: .bottom) { genreLabel(above: badge).opacity(isFocused ? 1 : 0) }
             .animation(.easeInOut(duration: 0.2), value: isFocused)
+            .overlay(alignment: .bottom) { progressBar(for: badge) }
+            .overlay(alignment: .topTrailing) { watchedMark(for: badge) }
             .overlay(alignment: .topLeading) { rankNumeral }
             .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             .hoverEffect(.highlight)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityTitle)
+            .accessibilityValue(accessibilityProgress(for: badge))
+    }
+
+    private var progressBadge: ProgressBadge {
+        guard showsProgress, let store else { return .none }
+        return store.progressBadge(for: item)
     }
 
     private var poster: some View {
@@ -38,14 +51,52 @@ struct PosterCard: View {
     }
 
     @ViewBuilder
-    private var genreLabel: some View {
+    private func genreLabel(above badge: ProgressBadge) -> some View {
         if let label = (item.kind == .anime ? item.title : item.genres.first) {
             Text(label)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.bottom, genreBottomPadding(for: badge))
+        }
+    }
+
+    private func genreBottomPadding(for badge: ProgressBadge) -> CGFloat {
+        if case .inProgress = badge { return 28 }
+        return 12
+    }
+
+    @ViewBuilder
+    private func progressBar(for badge: ProgressBadge) -> some View {
+        if case .inProgress(let progress) = badge {
+            MediaProgressBar(progress: progress)
+                .shadow(color: .black.opacity(0.4), radius: 4, y: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func watchedMark(for badge: ProgressBadge) -> some View {
+        if badge == .watched {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(Theme.textPrimary, Color.black.opacity(0.55))
+                .padding(12)
+        }
+    }
+
+    private var accessibilityTitle: String {
+        let year = item.year > 0 ? String(item.year) : nil
+        let rankLabel = rank.map { "Top \($0)" }
+        return [item.title, year, rankLabel].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private func accessibilityProgress(for badge: ProgressBadge) -> String {
+        switch badge {
+        case .none: ""
+        case .inProgress(let progress): "\(Int((progress * 100).rounded()))% assistido"
+        case .watched: "Assistido"
         }
     }
 

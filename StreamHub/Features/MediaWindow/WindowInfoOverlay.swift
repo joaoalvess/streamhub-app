@@ -28,6 +28,7 @@ struct WindowInfoOverlay: View {
     var playbackMode: PlaybackMode = .dubbed
     var playerEngine: PlayerEngine = .infuse
     var isInMyList = false
+    var qualityBadges: [String] = []
     var onPlay: () -> Void = {}
     var onCycleMode: () -> Void = {}
     var onHoldMode: () -> Void = {}
@@ -114,6 +115,14 @@ struct WindowInfoOverlay: View {
         .frame(maxWidth: 620, alignment: .leading)
     }
 
+    private var modeAccessibilityLabel: String {
+        switch playbackMode {
+        case .dubbed: "Modo: dublado"
+        case .subtitled: "Modo: legendado"
+        case .enhanced: "Modo: melhor qualidade"
+        }
+    }
+
     private var synopsis: some View {
         Text(item.synopsis)
             .font(Theme.Font.meta)
@@ -121,13 +130,31 @@ struct WindowInfoOverlay: View {
             .lineLimit(3)
     }
 
-    @ViewBuilder
     private var metaRow: some View {
-        if !item.yearRuntimeLabel.isEmpty {
-            Text(item.yearRuntimeLabel)
+        ZStack(alignment: .leading) {
+            Text(verbatim: " ")
                 .font(Theme.Font.meta)
-                .foregroundStyle(Theme.textPrimary)
+                .hidden()
+            HStack(spacing: 14) {
+                if !item.yearRuntimeLabel.isEmpty {
+                    Text(item.yearRuntimeLabel)
+                        .font(Theme.Font.meta)
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize()
+                        .layoutPriority(1)
+                }
+                if !qualityBadges.isEmpty {
+                    ViewThatFits(in: .horizontal) {
+                        QualityBadgesView(badges: qualityBadges)
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(4)))
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(3)))
+                        QualityBadgesView(badges: Array(qualityBadges.prefix(2)))
+                    }
+                    .transition(.opacity)
+                }
+            }
         }
+        .animation(.easeOut(duration: 0.25), value: qualityBadges)
     }
 
     private var ctaRow: some View {
@@ -174,6 +201,7 @@ struct WindowInfoOverlay: View {
                 Button(action: onCycleMode) {
                     Image(systemName: playbackMode.icon)
                 }
+                .accessibilityLabel(modeAccessibilityLabel)
                 .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .mode))
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.7).onEnded { _ in onHoldMode() }
@@ -185,6 +213,7 @@ struct WindowInfoOverlay: View {
             Button(action: onToggleEngine) {
                 Image(systemName: playerEngine.icon)
             }
+            .accessibilityLabel(playerEngine == .native ? "Player: nativo" : "Player: Infuse")
             .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .engine))
             .focused(focus, equals: .engine)
             .disabled(isPlayLoading)
@@ -192,12 +221,14 @@ struct WindowInfoOverlay: View {
             Button(action: onAdd) {
                 Image(systemName: isInMyList ? "checkmark" : "plus")
             }
+            .accessibilityLabel(isInMyList ? "Remover da Minha lista" : "Adicionar à Minha lista")
             .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .add))
             .focused(focus, equals: .add)
 
             Button(action: onInfo) {
                 Image(systemName: "info.circle")
             }
+            .accessibilityLabel("Mais informações")
             .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .info))
             .focused(focus, equals: .info)
         }
@@ -229,7 +260,10 @@ extension MediaItem {
     var yearRuntimeLabel: String {
         var parts: [String] = []
         if year > 0 { parts.append(String(year)) }
-        if let runtime, !runtime.isEmpty { parts.append(runtime) }
+        if let runtime, !runtime.isEmpty {
+            let minutes = RuntimeParser.minutes(from: runtime) ?? 0
+            parts.append(minutes > 0 ? DurationFormat.label(minutes: minutes) : runtime)
+        }
         return parts.joined(separator: " · ")
     }
 

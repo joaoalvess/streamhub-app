@@ -84,7 +84,7 @@ nonisolated extension MediaItem {
             streamingSource: service,
             progress: entry.progress ?? 0.05,
             episodeLabel: episodeLabel,
-            runtime: entry.runtimeMinutes.map { "\($0) min" }
+            runtime: entry.runtimeMinutes.map { DurationFormat.label(minutes: $0) }
         )
     }
 }
