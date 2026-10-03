@@ -23,6 +23,7 @@ final class HomeViewModel {
     func load() async {
         guard phase == .idle || phase == .failed else { return }
         phase = .loading
+        defer { if phase == .loading { phase = .idle } }
         do {
             let manifest = try await api.manifest(tag: config.tag)
             let defs = manifest.catalogs.filter { config.includes($0) }
@@ -35,8 +36,6 @@ final class HomeViewModel {
             }
             heroItems = Self.heroPool(pages: pages, config: config)
             phase = rows.isEmpty ? .failed : .loaded
-        } catch is CancellationError {
-            return
         } catch {
             guard !Task.isCancelled else { return }
             phase = .failed
@@ -83,8 +82,12 @@ final class HomeViewModel {
             func addTask(_ index: Int) {
                 let def = defs[index]
                 group.addTask { [api] in
-                    let metas = (try? await api.catalog(type: def.type, id: def.id)) ?? []
-                    return (index, metas)
+                    do {
+                        return (index, try await api.catalog(type: def.type, id: def.id))
+                    } catch {
+                        try Task.checkCancellation()
+                        return (index, [])
+                    }
                 }
             }
 
