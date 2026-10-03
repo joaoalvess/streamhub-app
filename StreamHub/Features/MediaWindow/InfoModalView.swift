@@ -40,15 +40,12 @@ struct InfoModalView: View {
                         .padding(.top, 4)
                 }
 
-                HStack(spacing: 14) {
-                    if !item.yearRuntimeLabel.isEmpty {
-                        Text(item.yearRuntimeLabel)
-                            .font(Theme.Font.meta)
-                            .foregroundStyle(Theme.textPrimary)
-                    }
-                    QualityBadgesView()
+                if !item.yearRuntimeLabel.isEmpty {
+                    Text(item.yearRuntimeLabel)
+                        .font(Theme.Font.meta)
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.top, 8)
                 }
-                .padding(.top, 8)
             }
             .padding(48)
             .frame(maxWidth: 920, alignment: .leading)
