@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-nonisolated struct RecentSearchEntry: Codable, Hashable {
+nonisolated struct MyListEntry: Codable, Hashable {
     let contentId: String
     let imdbId: String?
     let kind: String
@@ -11,15 +11,14 @@ nonisolated struct RecentSearchEntry: Codable, Hashable {
     let logoURL: URL?
     let genres: [String]
     let year: Int
-    let recordedAt: Date
+    let addedAt: Date
 }
 
 @Observable
-final class RecentSearchesStore {
-    private static let baseKey = "search.recents.v1"
-    private static let maxEntries = 10
+final class MyListStore {
+    private static let baseKey = "mylist.v1"
 
-    private(set) var entries: [RecentSearchEntry] = []
+    private(set) var entries: [MyListEntry] = []
     private var activeProfileID: UUID?
     private let defaults: UserDefaults
 
@@ -28,9 +27,18 @@ final class RecentSearchesStore {
         entries = Self.load(key: Self.entriesKey(for: nil), defaults: defaults)
     }
 
-    func record(_ item: MediaItem) {
-        guard let key = item.contentId ?? item.imdbId else { return }
-        let entry = RecentSearchEntry(
+    func contains(_ item: MediaItem) -> Bool {
+        guard let key = Self.identity(of: item) else { return false }
+        return entries.contains { $0.contentId == key }
+    }
+
+    func toggle(_ item: MediaItem) {
+        guard let key = Self.identity(of: item) else { return }
+        if entries.contains(where: { $0.contentId == key }) {
+            remove(contentId: key)
+            return
+        }
+        let entry = MyListEntry(
             contentId: key,
             imdbId: item.imdbId,
             kind: item.kind.rawValue,
@@ -40,19 +48,14 @@ final class RecentSearchesStore {
             logoURL: item.logoURL,
             genres: item.genres,
             year: item.year,
-            recordedAt: Date()
+            addedAt: Date()
         )
-        entries = Self.upserted(entry, into: entries)
+        entries.insert(entry, at: 0)
         persist()
     }
 
     func remove(contentId: String) {
         entries.removeAll { $0.contentId == contentId }
-        persist()
-    }
-
-    func clear() {
-        entries = []
         persist()
     }
 
@@ -83,30 +86,25 @@ final class RecentSearchesStore {
         defaults.set(data, forKey: Self.entriesKey(for: activeProfileID))
     }
 
+    private static func identity(of item: MediaItem) -> String? {
+        item.contentId ?? item.imdbId
+    }
+
     private static func entriesKey(for id: UUID?) -> String {
         guard let id else { return baseKey }
         return "\(baseKey).\(id.uuidString)"
     }
 
-    private static func load(key: String, defaults: UserDefaults) -> [RecentSearchEntry] {
+    private static func load(key: String, defaults: UserDefaults) -> [MyListEntry] {
         guard let data = defaults.data(forKey: key) else { return [] }
-        return (try? JSONDecoder().decode([RecentSearchEntry].self, from: data)) ?? []
-    }
-
-    private static func upserted(_ entry: RecentSearchEntry, into entries: [RecentSearchEntry]) -> [RecentSearchEntry] {
-        var result = entries.filter { $0.contentId != entry.contentId }
-        result.insert(entry, at: 0)
-        if result.count > maxEntries {
-            result = Array(result.prefix(maxEntries))
-        }
-        return result
+        return (try? JSONDecoder().decode([MyListEntry].self, from: data)) ?? []
     }
 }
 
 nonisolated extension MediaItem {
-    init(recent entry: RecentSearchEntry) {
+    init(myList entry: MyListEntry) {
         self.init(
-            id: Self.stableID(for: "recent:\(entry.contentId)"),
+            id: Self.stableID(for: "mylist:\(entry.contentId)"),
             contentId: entry.contentId,
             imdbId: entry.imdbId,
             title: entry.title,

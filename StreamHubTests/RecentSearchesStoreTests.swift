@@ -89,6 +89,40 @@ struct RecentSearchesStoreTests {
         #expect(reloaded.entries.isEmpty)
     }
 
+    @Test func removeDropsOnlyMatchingEntryAndPersists() throws {
+        let defaults = try makeDefaults()
+        let profile = UUID()
+        let store = RecentSearchesStore(defaults: defaults)
+        store.setActiveProfile(profile)
+        store.record(item("tt1"))
+        store.record(item("kitsu:11", kind: .anime))
+        store.record(item("tt2"))
+        store.remove(contentId: "kitsu:11")
+        #expect(store.entries.map(\.contentId) == ["tt2", "tt1"])
+        let reloaded = RecentSearchesStore(defaults: defaults)
+        reloaded.setActiveProfile(profile)
+        #expect(reloaded.entries.map(\.contentId) == ["tt2", "tt1"])
+    }
+
+    @Test func clearEmptiesActiveProfileOnly() throws {
+        let defaults = try makeDefaults()
+        let profileA = UUID()
+        let profileB = UUID()
+        let store = RecentSearchesStore(defaults: defaults)
+        store.setActiveProfile(profileB)
+        store.record(item("tt9"))
+        store.setActiveProfile(profileA)
+        store.record(item("tt1"))
+        store.record(item("tt2"))
+        store.clear()
+        #expect(store.entries.isEmpty)
+        let reloaded = RecentSearchesStore(defaults: defaults)
+        reloaded.setActiveProfile(profileA)
+        #expect(reloaded.entries.isEmpty)
+        reloaded.setActiveProfile(profileB)
+        #expect(reloaded.entries.map(\.contentId) == ["tt9"])
+    }
+
     @Test func recordIgnoresItemWithoutStableId() throws {
         let store = RecentSearchesStore(defaults: try makeDefaults())
         let orphan = MediaItem(

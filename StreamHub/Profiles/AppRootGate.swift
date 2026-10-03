@@ -4,6 +4,7 @@ struct AppRootGate: View {
     @Environment(ProfileStore.self) private var profileStore
     @Environment(PlaybackProgressStore.self) private var progressStore
     @Environment(RecentSearchesStore.self) private var recentSearches
+    @Environment(MyListStore.self) private var myList
     @Environment(PlaybackCoordinator.self) private var coordinator
     @State private var router = DetailRouter()
 
@@ -49,9 +50,11 @@ struct AppRootGate: View {
         if let id, id == profileStore.profiles.first?.id {
             progressStore.adoptLegacyDataIfNeeded(for: id)
             recentSearches.adoptLegacyDataIfNeeded(for: id)
+            myList.adoptLegacyDataIfNeeded(for: id)
         }
         progressStore.setActiveProfile(id)
         recentSearches.setActiveProfile(id)
+        myList.setActiveProfile(id)
         if id == nil {
             router.close()
         }

@@ -27,6 +27,7 @@ struct ProfileEditorView: View {
     @Environment(ProfileStore.self) private var profileStore
     @Environment(PlaybackProgressStore.self) private var progressStore: PlaybackProgressStore?
     @Environment(RecentSearchesStore.self) private var recentSearchesStore: RecentSearchesStore?
+    @Environment(MyListStore.self) private var myListStore: MyListStore?
     @Environment(\.dismiss) private var dismiss
     @State private var name: String
     @State private var avatarAsset: String?
@@ -215,6 +216,7 @@ struct ProfileEditorView: View {
         profileStore.delete(profile)
         progressStore?.removeData(for: profile.id)
         recentSearchesStore?.removeData(for: profile.id)
+        myListStore?.removeData(for: profile.id)
         dismiss()
     }
 }

@@ -133,7 +133,7 @@ final class PlaybackProgressStore {
     private static let maxSessions = 5
     private static let maxWatchedSeries = 40
     private static let sessionTTL: TimeInterval = 86_400
-    private static let completionThreshold = 0.92
+    private nonisolated static let completionThreshold = 0.92
 
     private(set) var entries: [ResumeEntry] = []
     private(set) var activeProfileID: UUID?
@@ -151,6 +151,18 @@ final class PlaybackProgressStore {
 
     nonisolated static func seriesKey(for item: MediaItem) -> String? {
         item.imdbId ?? item.contentId
+    }
+
+    nonisolated static func isCompleted(position: Int, durationSeconds: Int?, runtimeMinutes: Int?) -> Bool {
+        let total: Int
+        if let durationSeconds, durationSeconds > 0 {
+            total = durationSeconds
+        } else if let runtimeMinutes, runtimeMinutes > 0 {
+            total = runtimeMinutes * 60
+        } else {
+            return false
+        }
+        return Double(position) / Double(total) >= completionThreshold
     }
 
     func position(for contentId: String) -> Int? {
@@ -190,13 +202,17 @@ final class PlaybackProgressStore {
         persistSessions()
     }
 
-    func applyCallback(lastPlayedURL: String, position: Int) {
+    func applyCallback(lastPlayedURL: String, position: Int, duration: Int? = nil) {
         guard let record = sessions.removeValue(forKey: lastPlayedURL) else { return }
         var entry = record.entry
         entry.positionSeconds = position
         entry.updatedAt = Date()
         let owner = record.profileID ?? activeProfileID
-        let completed = entry.progress.map { $0 >= Self.completionThreshold } ?? false
+        let completed = Self.isCompleted(
+            position: position,
+            durationSeconds: duration,
+            runtimeMinutes: entry.runtimeMinutes
+        )
         if completed, let context = record.episodeContext {
             markWatched(seriesId: context.seriesId, videoId: context.videoId, owner: owner)
         }
@@ -228,7 +244,7 @@ final class PlaybackProgressStore {
         if owner == activeProfileID {
             switch resolution {
             case .remove(let contentId):
-                remove(contentId: contentId)
+                removeEntry(contentId: contentId)
             case .upsert(let entry):
                 upsert(entry)
             }
@@ -299,6 +315,40 @@ final class PlaybackProgressStore {
         persistWatched()
     }
 
+    func markEpisodeWatched(seriesId: String, videoId: String, next: NextEpisodeRef? = nil) {
+        markWatched(seriesId: seriesId, videoId: videoId)
+        guard let current = entries.first(where: { $0.contentId == seriesId && $0.videoId == videoId }) else { return }
+        let context = EpisodeSessionContext(
+            seriesId: seriesId,
+            videoId: videoId,
+            season: current.season ?? 0,
+            episode: current.episode ?? 0,
+            next: next
+        )
+        let resolution = Self.callbackResolution(
+            entry: current,
+            completed: true,
+            context: context,
+            previousEntry: nil
+        )
+        apply(resolution, owner: activeProfileID)
+    }
+
+    func unmarkWatched(seriesId: String, videoId: String) {
+        guard var record = watched[seriesId], record.videoIds.remove(videoId) != nil else { return }
+        record.updatedAt = Date()
+        watched[seriesId] = record.videoIds.isEmpty ? nil : record
+        persistWatched()
+    }
+
+    func toggleWatched(seriesId: String, videoId: String, next: NextEpisodeRef? = nil) {
+        if isWatched(seriesId: seriesId, videoId: videoId) {
+            unmarkWatched(seriesId: seriesId, videoId: videoId)
+        } else {
+            markEpisodeWatched(seriesId: seriesId, videoId: videoId, next: next)
+        }
+    }
+
     private func markWatched(seriesId: String, videoId: String, owner: UUID?) {
         if owner == activeProfileID {
             markWatched(seriesId: seriesId, videoId: videoId)
@@ -329,6 +379,14 @@ final class PlaybackProgressStore {
     }
 
     func remove(contentId: String) {
+        sessions = sessions.filter {
+            $0.value.entry.contentId != contentId || ($0.value.profileID ?? activeProfileID) != activeProfileID
+        }
+        persistSessions()
+        removeEntry(contentId: contentId)
+    }
+
+    private func removeEntry(contentId: String) {
         entries.removeAll { $0.contentId == contentId }
         persistEntries()
     }
