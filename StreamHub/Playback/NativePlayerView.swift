@@ -29,6 +29,7 @@ struct NativePlayerView: View {
         .ignoresSafeArea()
         .onAppear {
             player.isScaleAspectFill = false
+            configurePlayer()
         }
         .onReceive(player.timemodel.$currentTime) { coordinator?.updateNativePosition($0) }
         .onReceive(player.timemodel.$totalTime) { total in
@@ -46,6 +47,14 @@ struct NativePlayerView: View {
             options.startPlayTime = TimeInterval(start)
         }
         return options
+    }
+
+    private func configurePlayer() {
+        let close = onClose
+        player.onPlaybackEnded = { reason in
+            guard case .completed = reason else { return }
+            close()
+        }
     }
 
     private func makeMetadata() -> TVPlayerMetadata {
