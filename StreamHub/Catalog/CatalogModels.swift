@@ -31,7 +31,7 @@ nonisolated struct MetaPreview: Decodable, Sendable {
     let year: LenientString?
     let imdbRating: String?
     let runtime: String?
-    let director: String?
+    let director: LenientStringList?
     let poster: String?
     let background: String?
     let logo: String?
@@ -73,5 +73,24 @@ nonisolated struct LenientString: Decodable, Sendable {
         } else {
             value = nil
         }
+    }
+}
+
+nonisolated struct LenientStringList: Decodable, Sendable {
+    let values: [String]
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw: [String]
+        if let list = try? container.decode([String].self) {
+            raw = list
+        } else if let string = try? container.decode(String.self) {
+            raw = string.split(separator: ",").map(String.init)
+        } else {
+            raw = []
+        }
+        values = raw
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }

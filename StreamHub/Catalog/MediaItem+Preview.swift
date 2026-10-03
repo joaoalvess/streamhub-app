@@ -21,7 +21,8 @@ nonisolated extension MediaItem {
         if let structured = preview.appExtras?.directors, !structured.isEmpty {
             directors = structured.map(Person.init(credit:))
         } else {
-            directors = Self.people(fromCSV: preview.director)
+            directors = (preview.director?.values ?? [])
+                .map { Person(name: $0, character: nil, photoURL: nil) }
         }
         let streamingSource = service ?? catalogId.flatMap(StreamingService.init(catalogId:))
 
@@ -53,14 +54,5 @@ nonisolated extension MediaItem {
             .replacingOccurrences(of: "w600_and_h900_bestv2", with: "w500")
             .replacingOccurrences(of: "/t/p/original/", with: "/t/p/w500/")
         return URL(string: sized)
-    }
-
-    private static func people(fromCSV csv: String?) -> [Person] {
-        guard let csv, !csv.isEmpty else { return [] }
-        return csv
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-            .map { Person(name: $0, character: nil, photoURL: nil) }
     }
 }

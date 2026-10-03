@@ -150,6 +150,57 @@ struct MetaModelsTests {
         #expect(response.meta == nil)
     }
 
+    @Test func decodesCatalogWithDirectorAsArray() throws {
+        let json = Data(#"""
+        {
+          "metas": [
+            {
+              "id": "tt31712570",
+              "type": "movie",
+              "name": "Mayday",
+              "year": "2026",
+              "director": ["Jonathan Goldstein", "John Francis Daley"]
+            }
+          ]
+        }
+        """#.utf8)
+        let metas = try JSONDecoder().decode(CatalogResponse.self, from: json).metas
+        let preview = try #require(metas.first)
+        #expect(preview.director?.values == ["Jonathan Goldstein", "John Francis Daley"])
+        #expect(MediaItem(preview: preview).directors.map(\.name)
+            == ["Jonathan Goldstein", "John Francis Daley"])
+    }
+
+    @Test func decodesCatalogWithDirectorAsCSVString() throws {
+        let json = Data(#"""
+        {
+          "metas": [
+            {
+              "id": "tt0111161",
+              "type": "movie",
+              "name": "The Shawshank Redemption",
+              "director": "Frank Darabont, Rob Reiner"
+            }
+          ]
+        }
+        """#.utf8)
+        let preview = try #require(JSONDecoder().decode(CatalogResponse.self, from: json).metas.first)
+        #expect(preview.director?.values == ["Frank Darabont", "Rob Reiner"])
+    }
+
+    @Test func decodesCatalogWithoutDirectorField() throws {
+        let json = Data(#"""
+        {
+          "metas": [
+            { "id": "mal:5114", "type": "anime", "name": "Fullmetal Alchemist" }
+          ]
+        }
+        """#.utf8)
+        let preview = try #require(JSONDecoder().decode(CatalogResponse.self, from: json).metas.first)
+        #expect(preview.director == nil)
+        #expect(MediaItem(preview: preview).directors.isEmpty)
+    }
+
     @Test func metaRequestUsesSeriesTypeForImdbSeries() throws {
         let request = try #require(MetaProvider.metaRequest(for: makeItem(contentId: "tt0903747", kind: .series)))
         #expect(request.type == "series")
