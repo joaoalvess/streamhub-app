@@ -26,6 +26,9 @@ struct AppRootGate: View {
         .onChange(of: profileStore.activeProfileID, initial: true) { _, id in
             applyProfile(id)
         }
+        .onChange(of: profileStore.profiles, initial: true) { _, profiles in
+            clearTopShelfIfOrphaned(profiles: profiles)
+        }
         .task(id: topShelfSnapshot) {
             guard let snapshot = topShelfSnapshot else { return }
             TopShelfPublisher.publish(snapshot)
@@ -45,12 +48,20 @@ struct AppRootGate: View {
     private func applyProfile(_ id: UUID?) {
         if let id, id == profileStore.profiles.first?.id {
             progressStore.adoptLegacyDataIfNeeded(for: id)
+            recentSearches.adoptLegacyDataIfNeeded(for: id)
         }
         progressStore.setActiveProfile(id)
         recentSearches.setActiveProfile(id)
         if id == nil {
             router.close()
         }
+    }
+
+    private func clearTopShelfIfOrphaned(profiles: [Profile]) {
+        guard let defaults = TopShelfStorage.sharedDefaults(),
+              let snapshot = TopShelfStorage.load(from: defaults),
+              !profiles.contains(where: { $0.id == snapshot.profileID }) else { return }
+        TopShelfPublisher.clear(from: defaults)
     }
 
     private func handleIncomingURL(_ url: URL) {
@@ -71,6 +82,16 @@ struct AppRootGate: View {
         applyProfile(profile.id)
         let entries = progressStore.entries
         guard let index = entries.firstIndex(where: { $0.contentId == link.contentID }) else { return }
-        router.open(row: .continueWatching(entries: entries), index: index, autoplay: link.action == .play)
+        let row = CatalogRow.continueWatching(entries: entries)
+        let autoplay = link.action == .play
+        guard router.target != nil else {
+            router.open(row: row, index: index, autoplay: autoplay)
+            return
+        }
+        router.close()
+        Task { [router] in
+            await Task.yield()
+            router.open(row: row, index: index, autoplay: autoplay)
+        }
     }
 }
