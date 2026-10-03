@@ -115,12 +115,14 @@ final class PlaybackCoordinator {
     private(set) var nativeSession: NativePlaybackSession?
     private var nativePosition: Int?
     var nativePositionSeconds: Int? { nativePosition }
+    private(set) var lastEndedNativePosition: Int?
     let progressStore: PlaybackProgressStore
 
     private let api: StreamsAPI
     private let watchHub = WatchHubAPI()
     private var cache: [String: (fetchedAt: Date, streams: [AddonStream])] = [:]
     private var inFlight: [String: Task<[AddonStream], any Error>] = [:]
+    private var playGeneration = 0
     private static let cacheTTL: TimeInterval = 60
 
     init(api: StreamsAPI = StreamsAPI(), progressStore: PlaybackProgressStore = PlaybackProgressStore()) {
@@ -142,11 +144,18 @@ final class PlaybackCoordinator {
         preferredStream: AddonStream? = nil
     ) async {
         guard state != .loading, item.kind == .movie || item.isAnime else { return }
+        let generation = beginPlay()
         switch route(for: item) {
         case .externalService(let service):
-            await openExternal(service, item: item)
+            await openExternal(service, item: item, generation: generation)
         case .infuse:
-            await playViaInfuse(item: item, mode: mode, engine: engine, preferredStream: preferredStream)
+            await playViaInfuse(
+                item: item,
+                mode: mode,
+                engine: engine,
+                preferredStream: preferredStream,
+                generation: generation
+            )
         }
     }
 
@@ -165,7 +174,8 @@ final class PlaybackCoordinator {
             next: next,
             mode: mode,
             engine: engine,
-            preferredStream: preferredStream
+            preferredStream: preferredStream,
+            generation: beginPlay()
         )
     }
 
@@ -210,6 +220,14 @@ final class PlaybackCoordinator {
         state = .idle
     }
 
+    func invalidatePendingPlay() {
+        playGeneration += 1
+        if state == .loading {
+            state = .idle
+        }
+        dismissError()
+    }
+
     func startNativeSession(
         videoURL: URL,
         title: String,
@@ -227,6 +245,7 @@ final class PlaybackCoordinator {
             )
         }
         nativePosition = nil
+        lastEndedNativePosition = nil
         nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, contentKey: contentKey, startSeconds: position, metadata: metadata)
         state = .idle
     }
@@ -255,23 +274,30 @@ final class PlaybackCoordinator {
         } else {
             progressStore.discardSession(videoURL: videoURL)
         }
+        lastEndedNativePosition = nativePosition
         nativePosition = nil
     }
 
-    private func openExternal(_ service: StreamingService, item: MediaItem) async {
+    private func beginPlay() -> Int {
+        playGeneration += 1
+        return playGeneration
+    }
+
+    private func isCurrentPlay(_ generation: Int) -> Bool {
+        generation == playGeneration
+    }
+
+    private func openExternal(_ service: StreamingService, item: MediaItem, generation: Int) async {
         state = .loading
-        for url in await titleURLs(for: service, item: item) {
+        let candidates = await titleURLs(for: service, item: item) + service.appURLs
+        for url in candidates {
+            guard isCurrentPlay(generation) else { return }
             if await UIApplication.shared.open(url) {
-                state = .idle
+                if isCurrentPlay(generation) { state = .idle }
                 return
             }
         }
-        for url in service.appURLs {
-            if await UIApplication.shared.open(url) {
-                state = .idle
-                return
-            }
-        }
+        guard isCurrentPlay(generation) else { return }
         state = .failed(.serviceOpenFailed(service.displayName))
     }
 
@@ -299,7 +325,13 @@ final class PlaybackCoordinator {
         return candidates
     }
 
-    private func playViaInfuse(item: MediaItem, mode: PlaybackMode, engine: PlayerEngine, preferredStream: AddonStream?) async {
+    private func playViaInfuse(
+        item: MediaItem,
+        mode: PlaybackMode,
+        engine: PlayerEngine,
+        preferredStream: AddonStream?,
+        generation: Int
+    ) async {
         let query: (profile: StreamProfile, type: String, id: String)
         switch Self.streamQuery(for: item, mode: mode) {
         case .failure(let error):
@@ -309,8 +341,10 @@ final class PlaybackCoordinator {
             query = resolved
         }
         state = .loading
+        let result = await loadStreams(profile: query.profile, type: query.type, id: query.id)
+        guard isCurrentPlay(generation) else { return }
         let streams: [AddonStream]
-        switch await loadStreams(profile: query.profile, type: query.type, id: query.id) {
+        switch result {
         case .failure(let error):
             state = .failed(error)
             return
@@ -358,10 +392,10 @@ final class PlaybackCoordinator {
         let videoURLString = videoURL.absoluteString
         progressStore.registerSession(videoURL: videoURLString, entry: entry)
         if await InfuseLauncher.open(url) {
-            state = .idle
+            if isCurrentPlay(generation) { state = .idle }
         } else {
             progressStore.discardSession(videoURL: videoURLString)
-            state = .failed(.openFailed)
+            if isCurrentPlay(generation) { state = .failed(.openFailed) }
         }
     }
 
@@ -371,7 +405,8 @@ final class PlaybackCoordinator {
         next: EpisodeItem?,
         mode: PlaybackMode,
         engine: PlayerEngine,
-        preferredStream: AddonStream?
+        preferredStream: AddonStream?,
+        generation: Int
     ) async {
         let query: (profile: StreamProfile, type: String)
         switch Self.streamQuery(videoId: episode.videoId, isAnime: item.isAnime, mode: mode) {
@@ -382,8 +417,10 @@ final class PlaybackCoordinator {
             query = resolved
         }
         state = .loading
+        let result = await loadStreams(profile: query.profile, type: query.type, id: episode.videoId)
+        guard isCurrentPlay(generation) else { return }
         let streams: [AddonStream]
-        switch await loadStreams(profile: query.profile, type: query.type, id: episode.videoId) {
+        switch result {
         case .failure(let error):
             state = .failed(error)
             return
@@ -451,10 +488,10 @@ final class PlaybackCoordinator {
         let videoURLString = videoURL.absoluteString
         progressStore.registerSession(videoURL: videoURLString, entry: entry, episodeContext: context)
         if await InfuseLauncher.open(url) {
-            state = .idle
+            if isCurrentPlay(generation) { state = .idle }
         } else {
             progressStore.discardSession(videoURL: videoURLString)
-            state = .failed(.openFailed)
+            if isCurrentPlay(generation) { state = .failed(.openFailed) }
         }
     }
 

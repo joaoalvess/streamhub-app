@@ -117,6 +117,10 @@ struct MediaWindowView: View {
         }
         .task(id: centerIndex) { await loadAssets() }
         .task(id: centerIndex) { await loadSeries() }
+        .onDisappear {
+            guard let coordinator, coordinator.nativeSession == nil else { return }
+            coordinator.invalidatePendingPlay()
+        }
         .disabled(nativeSession != nil)
         .accessibilityHidden(nativeSession != nil)
         .overlay {
