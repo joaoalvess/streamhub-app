@@ -1,16 +1,17 @@
 import SwiftUI
-import ImageIO
 
 /// Tela intermediária ao selecionar um título. Apresenta um carrossel de
 /// backdrops (window) que expande para fullscreen ao pressionar cima/baixo ou
 /// o botão central. Voltar: ficha completa → fullscreen → window → home.
 struct MediaWindowView: View {
     static let expandDuration: TimeInterval = 0.55
+    private static let seriesDebounce: Duration = .milliseconds(350)
 
     let row: CatalogRow
     let startIndex: Int
 
     @State private var centerIndex: Int
+    @State private var hasLeftStart = false
     @State private var autoplayPending: Bool
     @State private var isFullscreen = false
     @State private var showsInfo = false
@@ -104,6 +105,7 @@ struct MediaWindowView: View {
         }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
         .onChange(of: centerIndex) { _, _ in
+            hasLeftStart = true
             autoplayPending = false
             withAnimation(.easeOut(duration: 0.25)) { loaded = nil }
         }
@@ -116,7 +118,7 @@ struct MediaWindowView: View {
             }
         }
         .task(id: centerIndex) { await loadAssets() }
-        .task(id: centerIndex) { await loadSeries() }
+        .task(id: centerIndex) { await loadSeries(after: isAtInitialTitle ? .zero : Self.seriesDebounce) }
         .onDisappear {
             guard let coordinator, coordinator.nativeSession == nil else { return }
             coordinator.invalidatePendingPlay()
@@ -523,10 +525,23 @@ struct MediaWindowView: View {
         }
     }
 
-    private func loadSeries() async {
+    private var isAtInitialTitle: Bool {
+        !hasLeftStart && centerIndex == max(0, startIndex)
+    }
+
+    private var assetsSettleDelay: TimeInterval {
+        guard isAtInitialTitle else { return BackdropCarousel.settleDuration }
+        return autoplayPending ? BackdropCarousel.slideDuration : 0
+    }
+
+    private func loadSeries(after delay: Duration = .zero) async {
         seriesModel = SeriesDetailViewModel()
         let item = row.item(at: centerIndex)
         guard isSeriesLike(item), let metaProvider else { return }
+        if delay > .zero {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+        }
         await seriesModel.load(item: item, provider: metaProvider, store: coordinator?.progressStore)
     }
 
@@ -538,9 +553,12 @@ struct MediaWindowView: View {
     private func loadAssets() async {
         let index = centerIndex
         let item = row.item(at: index)
-        async let backdrop = WindowAssetLoader.image(item.backdropURL)
-        async let logo = WindowAssetLoader.image(item.logoURL)
-        try? await Task.sleep(for: .seconds(BackdropCarousel.slideDuration))
+        let settleDelay = assetsSettleDelay
+        async let backdrop = Self.image(item.backdropURL, maxPixelSize: ImageSize.backdrop)
+        async let logo = Self.image(item.logoURL, maxPixelSize: ImageSize.logo)
+        if settleDelay > 0 {
+            try? await Task.sleep(for: .seconds(settleDelay))
+        }
         let backdropImage = await backdrop
         let logoImage = await logo
         guard !Task.isCancelled, centerIndex == index else { return }
@@ -551,6 +569,14 @@ struct MediaWindowView: View {
                 logo: logoImage.map { Image(decorative: $0, scale: 1) }
             )
         }
+    }
+
+    private static func image(_ url: URL?, maxPixelSize: Int) async -> CGImage? {
+        guard let url else { return nil }
+        if let cached = ImagePipeline.shared.cachedImage(for: url, maxPixelSize: maxPixelSize) {
+            return cached
+        }
+        return await ImagePipeline.shared.image(for: url, maxPixelSize: maxPixelSize)
     }
 }
 
@@ -616,14 +642,4 @@ private enum PlayResolution {
     case target(PlayTarget)
     case blocked(PlaybackCoordinator.PlaybackError)
     case pending
-}
-
-private enum WindowAssetLoader {
-    static func image(_ url: URL?) async -> CGImage? {
-        guard let url,
-              let (data, _) = try? await URLSession.shared.data(from: url),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        return image
-    }
 }

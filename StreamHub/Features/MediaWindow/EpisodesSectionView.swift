@@ -81,16 +81,19 @@ struct EpisodesSectionView: View {
         style: EpisodeCardView.Style,
         focusCase: @escaping (Int) -> WindowFocus
     ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let seriesProgress = model.seriesProgress(store: progressStore, seriesId: seriesId)
+        let focused = focus.wrappedValue
+        return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: Theme.Metrics.cardSpacing) {
-                ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
+                ForEach(episodes) { episode in
+                    let index = model.position(of: episode) ?? 0
                     EpisodeCardView(
                         episode: episode,
-                        progress: model.progress(for: episode, store: progressStore, seriesId: seriesId),
-                        isWatched: model.isWatched(episode, store: progressStore, seriesId: seriesId),
+                        progress: seriesProgress.progress(for: episode),
+                        isWatched: seriesProgress.isWatched(episode),
                         style: style,
                         ageRating: ageRating,
-                        isFocused: focus.wrappedValue == focusCase(index),
+                        isFocused: focused == focusCase(index),
                         onSelect: { onPlay(episode) }
                     )
                     .focused(focus, equals: focusCase(index))

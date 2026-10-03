@@ -7,36 +7,25 @@ import SwiftUI
 struct BackdropCard: View {
     let item: MediaItem
     var isCenter: Bool = true
+    var showsImage: Bool = true
 
     var body: some View {
-        AsyncImage(url: item.backdropURL, transaction: Transaction(animation: .default)) { phase in
-            switch phase {
-            case .success(let image):
-                Color.clear
-                    .overlay {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    }
-                    .clipped()
-                    .transition(.opacity)
-            default:
-                ZStack {
+        Color.clear
+            .overlay {
+                RemoteImage(url: showsImage ? item.backdropURL : nil, maxPixelSize: ImageSize.backdrop) {
                     item.tint ?? Theme.bgElevated
-                    ProgressView()
                 }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipped()
-        .overlay { peekDim }
-        .clipShape(UnevenRoundedRectangle(
-            topLeadingRadius: Theme.Radius.window,
-            bottomLeadingRadius: 0,
-            bottomTrailingRadius: 0,
-            topTrailingRadius: Theme.Radius.window,
-            style: .continuous
-        ))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .overlay { peekDim }
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: Theme.Radius.window,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: Theme.Radius.window,
+                style: .continuous
+            ))
     }
 
     @ViewBuilder

@@ -7,6 +7,8 @@ import SwiftUI
 /// A navegação infinita reutiliza o prefetch/reciclagem do `CatalogRow`.
 struct BackdropCarousel: View {
     static let slideDuration: TimeInterval = 0.7
+    static let settleDuration: TimeInterval = 0.45
+    private static let imageReach = 2
 
     let row: CatalogRow
     @Binding var centerIndex: Int
@@ -30,7 +32,8 @@ struct BackdropCarousel: View {
                         ForEach(0..<row.displayCount, id: \.self) { index in
                             BackdropCard(
                                 item: row.item(at: index),
-                                isCenter: index == centerIndex
+                                isCenter: index == centerIndex,
+                                showsImage: abs(index - centerIndex) <= Self.imageReach
                             )
                             .frame(width: cardWidth, height: geo.size.height)
                             .id(index)

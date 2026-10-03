@@ -68,21 +68,8 @@ struct EpisodeCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
     }
 
-    @ViewBuilder
     private var thumbnail: some View {
-        if let url = episode.thumbnailURL {
-            AsyncImage(url: url, transaction: Transaction(animation: .default)) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .transition(.opacity)
-                default:
-                    placeholder
-                }
-            }
-        } else {
+        RemoteImage(url: episode.thumbnailURL, maxPixelSize: ImageSize.wide) {
             placeholder
         }
     }

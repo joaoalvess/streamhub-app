@@ -7,11 +7,13 @@ final class SeriesDetailViewModel {
 
     private(set) var phase: Phase = .idle
     private(set) var seasons: [SeasonGroup] = []
+    private(set) var seasonTabs: [SeasonGroup] = []
+    private(set) var specials: SeasonGroup?
     private(set) var selectedSeasonIndex: Int = 0
     private(set) var detail: MetaDetail?
 
-    var seasonTabs: [SeasonGroup] { seasons.filter { $0.number != 0 } }
-    var specials: SeasonGroup? { seasons.first { $0.number == 0 } }
+    @ObservationIgnored private var timeline = EpisodeTimeline(seasons: [])
+    @ObservationIgnored private var progressCache: (seriesId: String, value: SeriesProgress)?
 
     var selectedSeason: SeasonGroup? {
         seasonTabs.indices.contains(selectedSeasonIndex) ? seasonTabs[selectedSeasonIndex] : nil
@@ -27,15 +29,13 @@ final class SeriesDetailViewModel {
                 phase = .unavailable
                 return
             }
-            seasons = EpisodePlanner.seasons(
+            let timeline = await EpisodePlanner.timeline(
                 from: videos,
                 fallbackRuntimeMinutes: RuntimeParser.minutes(from: detail.runtime)
             )
-            let next = EpisodePlanner.nextUnwatched(
-                seasons: seasons,
-                resume: resumeEntry(store: store, seriesId: seriesId),
-                watched: store?.watchedVideoIds(seriesId: seriesId) ?? []
-            )
+            guard !Task.isCancelled else { return }
+            apply(timeline)
+            let next = nextEpisode(store: store, seriesId: seriesId)
             let defaultIndex = EpisodePlanner.defaultSeasonIndex(seasons: seasons, next: next)
             let defaultNumber = seasons.indices.contains(defaultIndex) ? seasons[defaultIndex].number : nil
             selectedSeasonIndex = defaultNumber.flatMap { number in
@@ -55,35 +55,45 @@ final class SeriesDetailViewModel {
     }
 
     func nextEpisode(store: PlaybackProgressStore?, seriesId: String) -> EpisodeItem? {
-        EpisodePlanner.nextUnwatched(
-            seasons: seasons,
-            resume: resumeEntry(store: store, seriesId: seriesId),
-            watched: store?.watchedVideoIds(seriesId: seriesId) ?? []
-        )
+        seriesProgress(store: store, seriesId: seriesId).next
     }
 
     func episodeAfter(_ episode: EpisodeItem) -> EpisodeItem? {
-        EpisodePlanner.episodeAfter(episode, seasons: seasons)
+        timeline.episodeAfter(episode)
+    }
+
+    func position(of episode: EpisodeItem) -> Int? {
+        timeline.position(of: episode)
     }
 
     func playLabel(store: PlaybackProgressStore?, seriesId: String) -> String {
-        EpisodePlanner.playLabel(
-            next: nextEpisode(store: store, seriesId: seriesId),
-            resume: resumeEntry(store: store, seriesId: seriesId)
+        let progress = seriesProgress(store: store, seriesId: seriesId)
+        return EpisodePlanner.playLabel(next: progress.next, resume: progress.resume)
+    }
+
+    func seriesProgress(store: PlaybackProgressStore?, seriesId: String) -> SeriesProgress {
+        let resume = store?.entries.first { $0.contentId == seriesId }
+        let watched = store?.watchedVideoIds(seriesId: seriesId) ?? []
+        if let cached = progressCache,
+           cached.seriesId == seriesId,
+           cached.value.resume == resume,
+           cached.value.watched == watched {
+            return cached.value
+        }
+        let value = SeriesProgress(
+            resume: resume,
+            watched: watched,
+            next: timeline.nextUnwatched(resume: resume, watched: watched)
         )
+        progressCache = (seriesId, value)
+        return value
     }
 
-    func progress(for episode: EpisodeItem, store: PlaybackProgressStore?, seriesId: String) -> Double? {
-        guard let resume = resumeEntry(store: store, seriesId: seriesId),
-              resume.videoId == episode.videoId else { return nil }
-        return resume.progress
-    }
-
-    func isWatched(_ episode: EpisodeItem, store: PlaybackProgressStore?, seriesId: String) -> Bool {
-        store?.isWatched(seriesId: seriesId, videoId: episode.videoId) ?? false
-    }
-
-    private func resumeEntry(store: PlaybackProgressStore?, seriesId: String) -> ResumeEntry? {
-        store?.entries.first { $0.contentId == seriesId }
+    private func apply(_ timeline: EpisodeTimeline) {
+        self.timeline = timeline
+        progressCache = nil
+        seasons = timeline.seasons
+        seasonTabs = timeline.seasons.filter { $0.number != 0 }
+        specials = timeline.seasons.first { $0.number == 0 }
     }
 }
