@@ -20,7 +20,7 @@ final class LibraryAllViewModel {
 
     private let api: JellyfinAPI
     private let baseProvider: () -> URL?
-    private var hasLoaded = false
+    @ObservationIgnored private var firstPageTask: Task<Void, Never>?
 
     init(
         api: JellyfinAPI = JellyfinAPI(),
@@ -35,9 +35,14 @@ final class LibraryAllViewModel {
     }
 
     func loadIfNeeded() async {
-        guard !hasLoaded else { return }
-        hasLoaded = true
-        await loadFirstPage()
+        guard phase != .loaded else { return }
+        if firstPageTask == nil {
+            firstPageTask = Task { [weak self] in
+                await self?.loadFirstPage()
+                self?.firstPageTask = nil
+            }
+        }
+        await firstPageTask?.value
     }
 
     func loadFirstPage() async {
@@ -49,10 +54,7 @@ final class LibraryAllViewModel {
             total = page.total
             phase = .loaded
         } catch {
-            if LibraryViewModel.isCancellation(error) {
-                hasLoaded = false
-                return
-            }
+            if LibraryViewModel.isCancellation(error) { return }
             phase = .failed
         }
     }
