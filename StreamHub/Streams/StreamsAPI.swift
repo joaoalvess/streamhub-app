@@ -33,41 +33,34 @@ nonisolated struct StreamsAPI {
     }
 
     private func fetch(_ url: URL, attempt: Int) async throws -> StreamsResponse {
-        await gate.admit()
+        try await gate.admit()
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        let data: Data
-        let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
-        } catch {
+            let (data, _) = try await HTTP.data(for: request, session: session)
+            return try HTTP.decode(StreamsResponse.self, from: data)
+        } catch HTTPFailure.status(429, let response) {
+            let retryAfter = Self.retryDelay(from: response)
+            guard attempt < 2 else {
+                throw StreamsAPIError.rateLimited(retryAfter: retryAfter)
+            }
+            let delay = (retryAfter ?? Double(attempt + 1) * 1.5) + Double.random(in: 0...0.5)
+            try await Task.sleep(for: .seconds(delay))
+            return try await fetch(url, attempt: attempt + 1)
+        } catch HTTPFailure.status(let code, _) {
+            throw StreamsAPIError.badStatus(code)
+        } catch HTTPFailure.transport(let error) {
             throw StreamsAPIError.transport(error)
-        }
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 429 {
-                let retryAfter = Self.retryDelay(from: http)
-                guard attempt < 2 else {
-                    throw StreamsAPIError.rateLimited(retryAfter: retryAfter)
-                }
-                let delay = (retryAfter ?? Double(attempt + 1) * 1.5) + Double.random(in: 0...0.5)
-                try? await Task.sleep(for: .seconds(delay))
-                return try await fetch(url, attempt: attempt + 1)
-            }
-            guard (200...299).contains(http.statusCode) else {
-                throw StreamsAPIError.badStatus(http.statusCode)
-            }
-        }
-        do {
-            return try JSONDecoder().decode(StreamsResponse.self, from: data)
-        } catch {
+        } catch HTTPFailure.decoding(let error) {
             throw StreamsAPIError.decoding(error)
         }
     }
 
-    private static func retryDelay(from response: HTTPURLResponse) -> TimeInterval? {
+    static func retryDelay(from response: HTTPURLResponse) -> TimeInterval? {
         let header = response.value(forHTTPHeaderField: "Retry-After")
             ?? response.value(forHTTPHeaderField: "ratelimit-reset")
-        return header.flatMap(TimeInterval.init)
+        guard let value = header.flatMap({ TimeInterval($0) }), !value.isNaN else { return nil }
+        return min(max(value, 0), 30)
     }
 }
 
@@ -84,16 +77,16 @@ actor RequestGate {
         self.window = window
     }
 
-    func admit() async {
+    func admit() async throws {
         while true {
+            try Task.checkCancellation()
             let now = clock.now
             admissions.removeAll { now - $0 >= window }
             if admissions.count < limit {
                 admissions.append(now)
                 return
             }
-            guard let oldest = admissions.first else { continue }
-            try? await clock.sleep(until: oldest + window)
+            try await clock.sleep(until: (admissions.first ?? now) + window)
         }
     }
 }

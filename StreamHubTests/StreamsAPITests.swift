@@ -76,23 +76,58 @@ struct StreamsAPITests {
         #expect(chosen.playbackURL?.absoluteString == "https://cdn.example/primeiro.mkv")
     }
 
-    @Test func gateDelaysCallsBeyondWindowLimit() async {
+    @Test func gateDelaysCallsBeyondWindowLimit() async throws {
         let gate = RequestGate(limit: 2, window: .milliseconds(250))
         let clock = ContinuousClock()
         let start = clock.now
-        await gate.admit()
-        await gate.admit()
-        await gate.admit()
+        try await gate.admit()
+        try await gate.admit()
+        try await gate.admit()
         let elapsed = clock.now - start
         #expect(elapsed >= .milliseconds(240))
     }
 
-    @Test func gateAllowsCallsWithinLimitImmediately() async {
+    @Test func gateAllowsCallsWithinLimitImmediately() async throws {
         let gate = RequestGate(limit: 5, window: .seconds(5))
         let clock = ContinuousClock()
         let start = clock.now
-        for _ in 0..<5 { await gate.admit() }
+        for _ in 0..<5 { try await gate.admit() }
         let elapsed = clock.now - start
         #expect(elapsed < .seconds(1))
+    }
+
+    @Test func cancelledWaiterLeavesGateWithoutAdmission() async throws {
+        let gate = RequestGate(limit: 1, window: .seconds(60))
+        try await gate.admit()
+        let waiter = Task { try await gate.admit() }
+        waiter.cancel()
+        let result = await waiter.result
+        #expect(throws: CancellationError.self) { try result.get() }
+    }
+
+    @Test func retryDelayClampsEpochResetToThirtySeconds() throws {
+        let epoch = try rateLimitedResponse(headers: ["ratelimit-reset": "1759500000"])
+        #expect(StreamsAPI.retryDelay(from: epoch) == 30)
+    }
+
+    @Test func retryDelayKeepsShortValuesAndFloorsNegativeOnes() throws {
+        let short = try rateLimitedResponse(headers: ["Retry-After": "2"])
+        let negative = try rateLimitedResponse(headers: ["Retry-After": "-5"])
+        #expect(StreamsAPI.retryDelay(from: short) == 2)
+        #expect(StreamsAPI.retryDelay(from: negative) == 0)
+    }
+
+    @Test func retryDelayIgnoresNonNumericHeaders() throws {
+        let httpDate = try rateLimitedResponse(headers: ["Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"])
+        let notANumber = try rateLimitedResponse(headers: ["Retry-After": "nan"])
+        let missing = try rateLimitedResponse(headers: [:])
+        #expect(StreamsAPI.retryDelay(from: httpDate) == nil)
+        #expect(StreamsAPI.retryDelay(from: notANumber) == nil)
+        #expect(StreamsAPI.retryDelay(from: missing) == nil)
+    }
+
+    private func rateLimitedResponse(headers: [String: String]) throws -> HTTPURLResponse {
+        let url = try #require(URL(string: "https://streams.example/stream/movie/tt0111161.json"))
+        return try #require(HTTPURLResponse(url: url, statusCode: 429, httpVersion: nil, headerFields: headers))
     }
 }
