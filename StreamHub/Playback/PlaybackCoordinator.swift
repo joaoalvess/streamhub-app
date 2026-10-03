@@ -73,10 +73,17 @@ final class PlaybackCoordinator {
     private let watchHub = WatchHubAPI()
     private let cache = AsyncTTLCache<String, [AddonStream]>(ttl: 60, capacity: 10, shouldStore: { !$0.isEmpty })
     private var playGeneration = 0
+    private let trackPreferenceStore: TrackPreferenceStore
+    @ObservationIgnored private var nativePreferenceScope = TrackPreferenceScope.global
 
-    init(api: StreamsAPI = StreamsAPI(), progressStore: PlaybackProgressStore = PlaybackProgressStore()) {
+    init(
+        api: StreamsAPI = StreamsAPI(),
+        progressStore: PlaybackProgressStore = PlaybackProgressStore(),
+        trackPreferenceStore: TrackPreferenceStore = TrackPreferenceStore()
+    ) {
         self.api = api
         self.progressStore = progressStore
+        self.trackPreferenceStore = trackPreferenceStore
     }
 
     func route(for item: MediaItem) -> Route {
@@ -184,7 +191,8 @@ final class PlaybackCoordinator {
         entry: ResumeEntry?,
         episodeContext: EpisodeSessionContext? = nil,
         contentKey: String? = nil,
-        metadata: NativeSessionMetadata? = nil
+        metadata: NativeSessionMetadata? = nil,
+        preferenceScope: TrackPreferenceScope = .global
     ) {
         if let entry {
             progressStore.registerSession(
@@ -197,7 +205,18 @@ final class PlaybackCoordinator {
         nativeDuration = nil
         lastCheckpoint = nil
         lastEndedNativePosition = nil
-        nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, contentKey: contentKey, startSeconds: position, metadata: metadata)
+        nativePreferenceScope = preferenceScope
+        nativeSession = NativePlaybackSession(
+            videoURL: videoURL,
+            title: title,
+            contentKey: contentKey,
+            startSeconds: position,
+            metadata: metadata,
+            trackPreferences: trackPreferenceStore.preference(
+                for: preferenceScope,
+                profileID: progressStore.activeProfileID
+            )
+        )
         state = .idle
     }
 
@@ -215,6 +234,11 @@ final class PlaybackCoordinator {
         guard var session = nativeSession, session.id == sessionID, session.segments != segments else { return }
         session.segments = segments
         nativeSession = session
+    }
+
+    func recordTrackChoice(_ choice: TrackChoice, for sessionID: UUID) {
+        guard nativeSession?.id == sessionID else { return }
+        trackPreferenceStore.record(choice, scope: nativePreferenceScope, profileID: progressStore.activeProfileID)
     }
 
     func updateNativePosition(_ seconds: Int) {
@@ -443,7 +467,8 @@ final class PlaybackCoordinator {
                     runtimeMinutes: episode.runtimeMinutes,
                     seasonNumber: episode.season,
                     episodeNumber: episode.episode
-                )
+                ),
+                preferenceScope: .series(seriesId)
             )
             return
         }

@@ -64,4 +64,5 @@ nonisolated struct NativePlaybackSession: Identifiable, Equatable {
     let startSeconds: Int?
     var metadata: NativeSessionMetadata?
     var segments: [NativeSkipSegment] = []
+    var trackPreferences = TrackPreference()
 }

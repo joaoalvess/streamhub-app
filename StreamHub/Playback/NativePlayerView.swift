@@ -49,6 +49,10 @@ struct NativePlayerView: View {
         if let start = session.startSeconds {
             options.startPlayTime = TimeInterval(start)
         }
+        let preferences = session.trackPreferences
+        options.preferredAudioLanguages = preferences.preferredAudioLanguages
+        options.preferredSubtitleLanguages = preferences.preferredSubtitleLanguages
+        options.subtitlesEnabledByDefault = preferences.subtitlesEnabled
         return options
     }
 
@@ -59,6 +63,37 @@ struct NativePlayerView: View {
             close()
         }
         player.tvFeatures.skipSegments = Self.skipSegments(from: session.segments)
+        guard let coordinator else { return }
+        let sessionID = session.id
+        let options = options
+        player.onTrackSelection = { event in
+            guard let choice = Self.trackChoice(from: event) else { return }
+            Self.apply(choice, to: options)
+            coordinator.recordTrackChoice(choice, for: sessionID)
+        }
+    }
+
+    private static func trackChoice(from event: TrackSelectionEvent) -> TrackChoice? {
+        switch event.kind {
+        case .audio:
+            return event.languageCode.map(TrackChoice.audio)
+        case .subtitle:
+            return event.isOff ? .subtitlesOff : .subtitle(event.languageCode)
+        }
+    }
+
+    private static func apply(_ choice: TrackChoice, to options: KSOptions) {
+        switch choice {
+        case .audio(let language):
+            options.preferredAudioLanguages = [language]
+        case .subtitle(let language):
+            if let language {
+                options.preferredSubtitleLanguages = [language]
+            }
+            options.subtitlesEnabledByDefault = true
+        case .subtitlesOff:
+            options.subtitlesEnabledByDefault = false
+        }
     }
 
     private static func skipSegments(from segments: [NativeSkipSegment]) -> [TVSkipSegment] {
