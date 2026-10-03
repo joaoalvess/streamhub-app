@@ -170,7 +170,7 @@ struct TopShelfTests {
         #expect(TopShelfStorage.artworkFileName(for: otherLogo) != name)
         #expect(TopShelfStorage.artworkFileName(for: otherContent) != name)
         #expect(name.hasSuffix(".jpg"))
-        #expect(name.dropLast(4).allSatisfy(\.isHexDigit))
+        #expect(name.dropLast(4).allSatisfy { $0.isHexDigit })
     }
 
     @Test func existingArtworkRequiresTheFile() throws {
