@@ -25,6 +25,7 @@ struct MediaWindowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @Environment(MetaProvider.self) private var metaProvider: MetaProvider?
+    @Environment(MyListStore.self) private var myList: MyListStore?
 
     private enum ScrollAnchor: Hashable { case top, episodes }
 
@@ -185,6 +186,7 @@ struct MediaWindowView: View {
             showsModeSelector: showsModeSelector(for: loaded.item),
             playbackMode: playbackMode,
             playerEngine: playerEngine,
+            isInMyList: myList?.contains(loaded.item) ?? false,
             onPlay: { play(loaded.item) },
             onCycleMode: {
                 guard !showsSources else { return }
@@ -196,6 +198,8 @@ struct MediaWindowView: View {
                 playerEngine = playerEngine.next
                 playerEngine.store()
             },
+            onAdd: { myList?.toggle(loaded.item) },
+            onInfo: showDetails,
             onShowDetails: showDetails
         )
     }

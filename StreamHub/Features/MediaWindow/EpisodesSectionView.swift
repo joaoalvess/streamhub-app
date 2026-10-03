@@ -87,16 +87,24 @@ struct EpisodesSectionView: View {
             LazyHStack(alignment: .top, spacing: Theme.Metrics.cardSpacing) {
                 ForEach(episodes) { episode in
                     let index = model.position(of: episode) ?? 0
+                    let isWatched = seriesProgress.isWatched(episode)
                     EpisodeCardView(
                         episode: episode,
                         progress: seriesProgress.progress(for: episode),
-                        isWatched: seriesProgress.isWatched(episode),
+                        isWatched: isWatched,
                         style: style,
                         ageRating: ageRating,
                         isFocused: focused == focusCase(index),
                         onSelect: { onPlay(episode) }
                     )
                     .focused(focus, equals: focusCase(index))
+                    .contextMenu {
+                        if episode.isReleased {
+                            Button(isWatched ? "Marcar como não assistido" : "Marcar como assistido") {
+                                toggleWatched(episode)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, Theme.Metrics.edgeH)
@@ -104,6 +112,19 @@ struct EpisodesSectionView: View {
         }
         .scrollClipDisabled()
         .focusSection()
+    }
+
+    private func toggleWatched(_ episode: EpisodeItem) {
+        let next = model.episodeAfter(episode).map {
+            NextEpisodeRef(
+                videoId: $0.videoId,
+                season: $0.season,
+                episode: $0.episode,
+                title: $0.title,
+                runtimeMinutes: $0.runtimeMinutes
+            )
+        }
+        progressStore?.toggleWatched(seriesId: seriesId, videoId: episode.videoId, next: next)
     }
 
     private var retrySection: some View {

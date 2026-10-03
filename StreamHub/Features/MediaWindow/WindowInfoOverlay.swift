@@ -27,6 +27,7 @@ struct WindowInfoOverlay: View {
     var showsModeSelector = false
     var playbackMode: PlaybackMode = .dubbed
     var playerEngine: PlayerEngine = .infuse
+    var isInMyList = false
     var onPlay: () -> Void = {}
     var onCycleMode: () -> Void = {}
     var onHoldMode: () -> Void = {}
@@ -101,7 +102,7 @@ struct WindowInfoOverlay: View {
             VStack(alignment: .leading, spacing: 12) {
                 typeGenreRow
                 synopsis
-                metaQualityRow
+                metaRow
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 20)
@@ -120,14 +121,12 @@ struct WindowInfoOverlay: View {
             .lineLimit(3)
     }
 
-    private var metaQualityRow: some View {
-        HStack(spacing: 14) {
-            if !item.yearRuntimeLabel.isEmpty {
-                Text(item.yearRuntimeLabel)
-                    .font(Theme.Font.meta)
-                    .foregroundStyle(Theme.textPrimary)
-            }
-            QualityBadgesView()
+    @ViewBuilder
+    private var metaRow: some View {
+        if !item.yearRuntimeLabel.isEmpty {
+            Text(item.yearRuntimeLabel)
+                .font(Theme.Font.meta)
+                .foregroundStyle(Theme.textPrimary)
         }
     }
 
@@ -159,16 +158,15 @@ struct WindowInfoOverlay: View {
             }
             .focused(focus, equals: .play)
             .disabled(isPlayLoading || !isPlayEnabled)
-            .onChange(of: isPlayLoading) { _, loading in
-                if loading {
+            .task(id: isPlayLoading) {
+                if isPlayLoading {
                     loadingFill = 0
                     withAnimation(.easeOut(duration: 3.2)) { loadingFill = 0.85 }
                 } else if loadingFill > 0 {
                     withAnimation(.easeOut(duration: 0.22)) { loadingFill = 1 }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(400))
-                        loadingFill = 0
-                    }
+                    try? await Task.sleep(for: .milliseconds(400))
+                    guard !Task.isCancelled else { return }
+                    loadingFill = 0
                 }
             }
 
@@ -192,7 +190,7 @@ struct WindowInfoOverlay: View {
             .disabled(isPlayLoading)
 
             Button(action: onAdd) {
-                Image(systemName: "plus")
+                Image(systemName: isInMyList ? "checkmark" : "plus")
             }
             .buttonStyle(HeroButtonStyle(shape: .circle, isActive: focus.wrappedValue == .add))
             .focused(focus, equals: .add)
