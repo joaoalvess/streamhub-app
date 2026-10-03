@@ -8,6 +8,9 @@ struct ContinueWatchingCardView: View {
         VStack(alignment: .leading, spacing: 14) {
             Button(action: onSelect) {
                 CardLabel(item: item)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(item.title)
+                    .accessibilityValue(accessibilityValue)
             }
             .buttonStyle(.borderless)
 
@@ -27,6 +30,14 @@ struct ContinueWatchingCardView: View {
             .compactMap { $0 }
             .filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var accessibilityValue: String {
+        let percent = item.progress.map { "\(Int(($0 * 100).rounded()))% assistido" }
+        return [item.episodeLabel, percent]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
     }
 }
 

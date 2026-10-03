@@ -190,8 +190,11 @@ struct HeroView: View {
             .heroControlFocus(focusedControl, .play)
 
             circleButton(symbol: isInMyList(item) ? "checkmark" : "plus", control: .add, action: { onToggleMyList(item) })
+                .accessibilityLabel(isInMyList(item) ? "Remover da Minha lista" : "Adicionar à Minha lista")
             circleButton(symbol: "info.circle", control: .info, action: { onInfo(index) })
+                .accessibilityLabel("Mais informações")
             circleButton(symbol: "chevron.right", control: .next, action: advance)
+                .accessibilityLabel("Próximo destaque")
         }
         .focusScope(heroFocus)
     }
