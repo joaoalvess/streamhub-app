@@ -32,23 +32,8 @@ struct PosterCard: View {
     }
 
     private var poster: some View {
-        AsyncImage(url: item.posterURL, transaction: Transaction(animation: .default)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .transition(.opacity)
-            case .failure:
-                Theme.bgElevated
-            case .empty:
-                ZStack {
-                    Theme.bgElevated
-                    ProgressView()
-                }
-            @unknown default:
-                Theme.bgElevated
-            }
+        RemoteImage(url: item.posterURL, maxPixelSize: ImageSize.poster) {
+            Theme.bgElevated
         }
     }
 

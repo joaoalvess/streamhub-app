@@ -32,23 +32,12 @@ struct ContinueWatchingCardView: View {
 
 private struct CardLabel: View {
     let item: MediaItem
+    @State private var failedLogoURL: URL?
 
     var body: some View {
         ZStack {
-            AsyncImage(url: item.backdropURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .transition(.opacity)
-                default:
-                    ZStack {
-                        Theme.bgElevated
-                        ProgressView()
-                    }
-                    .transition(.opacity)
-                }
+            RemoteImage(url: item.backdropURL, maxPixelSize: ImageSize.wide) {
+                Theme.bgElevated
             }
             .frame(width: Theme.Size.wideCardWidth, height: Theme.Size.wideCardHeight)
             .overlay { Theme.genreScrim }
@@ -80,21 +69,15 @@ private struct CardLabel: View {
 
     @ViewBuilder
     private var titleLockup: some View {
-        if let logoURL = item.logoURL {
-            AsyncImage(url: logoURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 200, maxHeight: 64)
-                        .transition(.opacity)
-                case .failure:
-                    titleText
-                default:
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                }
+        if let logoURL = item.logoURL, logoURL != failedLogoURL {
+            RemoteImage(url: logoURL, maxPixelSize: ImageSize.logo, contentMode: .fit) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+            }
+            .frame(maxWidth: 200, maxHeight: 64)
+            .task(id: logoURL) {
+                guard await ImagePipeline.shared.image(for: logoURL, maxPixelSize: ImageSize.logo) == nil else { return }
+                failedLogoURL = logoURL
             }
         } else {
             titleText

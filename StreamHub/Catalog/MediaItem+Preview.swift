@@ -33,8 +33,8 @@ nonisolated extension MediaItem {
             kind: MediaItem.Kind(rawValue: catalogType ?? "") ?? MediaItem.Kind(rawValue: preview.type) ?? .movie,
             genres: preview.genres ?? [],
             posterURL: Self.sizedPosterURL(preview.poster),
-            backdropURL: preview.background.flatMap(URL.init(string:)),
-            logoURL: preview.logo.flatMap(URL.init(string:)),
+            backdropURL: Self.sizedTMDBURL(preview.background, size: "w1280"),
+            logoURL: Self.sizedTMDBURL(preview.logo, size: "w500"),
             synopsis: preview.description ?? "",
             year: Int(preview.year?.value ?? "") ?? 0,
             serviceBadge: streamingSource?.badgeLabel,
@@ -54,5 +54,11 @@ nonisolated extension MediaItem {
             .replacingOccurrences(of: "w600_and_h900_bestv2", with: "w500")
             .replacingOccurrences(of: "/t/p/original/", with: "/t/p/w500/")
         return URL(string: sized)
+    }
+
+    private static func sizedTMDBURL(_ string: String?, size: String) -> URL? {
+        guard let string, let url = URL(string: string) else { return nil }
+        guard url.host() == "image.tmdb.org" else { return url }
+        return URL(string: string.replacingOccurrences(of: "/t/p/original/", with: "/t/p/\(size)/")) ?? url
     }
 }
