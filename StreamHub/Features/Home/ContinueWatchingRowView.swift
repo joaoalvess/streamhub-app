@@ -11,9 +11,8 @@ struct ContinueWatchingRowView: View {
     }
 
     var body: some View {
-        let items = entries.map(MediaItem.init(entry:))
-        let indexed = entries.indices.map {
-            IndexedItem(id: entries[$0].contentId, index: $0, item: items[$0])
+        let indexed = entries.enumerated().map { index, entry in
+            IndexedItem(id: entry.contentId, index: index, item: MediaItem(entry: entry))
         }
         VStack(alignment: .leading, spacing: Theme.Metrics.titleGap) {
             Text("Continue assistindo")
@@ -64,6 +63,7 @@ nonisolated extension MediaItem {
             episodeLabel = entry.remainingLabel
         }
         self.init(
+            id: Self.stableID(for: "resume:\(entry.contentId)"),
             contentId: entry.metaId ?? entry.contentId,
             imdbId: entry.imdbId,
             title: entry.title,

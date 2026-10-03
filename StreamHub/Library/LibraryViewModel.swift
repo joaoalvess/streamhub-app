@@ -111,7 +111,7 @@ final class LibraryViewModel {
 
     private let api: JellyfinAPI
     private let baseProvider: () -> URL?
-    private var hasLoaded = false
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     init(
         api: JellyfinAPI = JellyfinAPI(),
@@ -122,12 +122,21 @@ final class LibraryViewModel {
     }
 
     func loadIfNeeded() async {
-        guard !hasLoaded else { return }
-        hasLoaded = true
+        guard phase != .loaded else { return }
         await load()
     }
 
     func load() async {
+        if loadTask == nil {
+            loadTask = Task { await performLoad() }
+        }
+        if let loadTask {
+            await loadTask.value
+        }
+    }
+
+    private func performLoad() async {
+        defer { loadTask = nil }
         phase = .loading
         let api = self.api
         let base = baseProvider()
@@ -158,10 +167,6 @@ final class LibraryViewModel {
             }
             let resumed = await resumeItems
             let latest = await latestItems
-            guard !Task.isCancelled else {
-                hasLoaded = false
-                return
-            }
             var loaded: [LibraryRow] = []
             let resumeEntries = resumed.map { LibraryEntry(item: $0, base: base) }
             if !resumeEntries.isEmpty {
@@ -185,10 +190,6 @@ final class LibraryViewModel {
             rows = loaded
             phase = .loaded
         } catch {
-            if Self.isCancellation(error) {
-                hasLoaded = false
-                return
-            }
             phase = .failed(Self.message(for: error))
         }
     }
