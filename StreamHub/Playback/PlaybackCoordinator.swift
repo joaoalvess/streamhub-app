@@ -5,58 +5,6 @@ protocol EnhancedStreamProvider {
     func remuxURL(videoURL: URL, audioURL: URL, item: MediaItem) async throws -> URL
 }
 
-nonisolated struct NativeSessionMetadata: Equatable {
-    let subtitle: String?
-    let seasonNumber: Int?
-    let episodeNumber: Int?
-    let synopsis: String?
-    let artworkURL: URL?
-    let year: Int?
-    let genres: [String]
-    let runtimeMinutes: Int?
-    let ageRatingLabel: String?
-    let ratingLabel: String?
-    let cast: [MediaItem.Person]
-    let directors: [MediaItem.Person]
-
-    init(
-        subtitle: String?,
-        synopsis: String?,
-        artworkURL: URL?,
-        year: Int?,
-        genres: [String],
-        runtimeMinutes: Int?,
-        ageRatingLabel: String?,
-        ratingLabel: String?,
-        seasonNumber: Int? = nil,
-        episodeNumber: Int? = nil,
-        cast: [MediaItem.Person] = [],
-        directors: [MediaItem.Person] = []
-    ) {
-        self.subtitle = subtitle
-        self.seasonNumber = seasonNumber
-        self.episodeNumber = episodeNumber
-        self.synopsis = synopsis
-        self.artworkURL = artworkURL
-        self.year = year
-        self.genres = genres
-        self.runtimeMinutes = runtimeMinutes
-        self.ageRatingLabel = ageRatingLabel
-        self.ratingLabel = ratingLabel
-        self.cast = cast
-        self.directors = directors
-    }
-}
-
-nonisolated struct NativePlaybackSession: Identifiable, Equatable {
-    let id = UUID()
-    var videoURL: URL
-    let title: String
-    let contentKey: String?
-    let startSeconds: Int?
-    var metadata: NativeSessionMetadata?
-}
-
 @Observable
 final class PlaybackCoordinator {
     enum Route: Equatable {
@@ -64,7 +12,7 @@ final class PlaybackCoordinator {
         case externalService(StreamingService)
     }
 
-    enum PlaybackError: Error, Equatable {
+    nonisolated enum PlaybackError: Error, Equatable {
         case missingImdbId
         case notConfigured
         case noSources
@@ -179,7 +127,7 @@ final class PlaybackCoordinator {
     }
 
     func sources(for item: MediaItem, mode: PlaybackMode) async -> Result<[AddonStream], PlaybackError> {
-        switch Self.streamQuery(for: item, mode: mode) {
+        switch PlaybackRequest.streamQuery(for: item, mode: mode) {
         case .failure(let error):
             return .failure(error)
         case .success(let query):
@@ -189,7 +137,7 @@ final class PlaybackCoordinator {
     }
 
     func sources(videoId: String, isAnime: Bool, mode: PlaybackMode) async -> Result<[AddonStream], PlaybackError> {
-        switch Self.streamQuery(videoId: videoId, isAnime: isAnime, mode: mode) {
+        switch PlaybackRequest.streamQuery(videoId: videoId, isAnime: isAnime, mode: mode) {
         case .failure(let error):
             return .failure(error)
         case .success(let query):
@@ -339,7 +287,7 @@ final class PlaybackCoordinator {
         generation: Int
     ) async {
         let query: (profile: StreamProfile, type: String, id: String)
-        switch Self.streamQuery(for: item, mode: mode) {
+        switch PlaybackRequest.streamQuery(for: item, mode: mode) {
         case .failure(let error):
             state = .failed(error)
             return
@@ -365,10 +313,10 @@ final class PlaybackCoordinator {
         let contentId = item.contentId ?? query.id
         let runtimeMinutes = RuntimeParser.minutes(from: item.runtime)
         let position = resumePosition(for: contentId, runtimeMinutes: runtimeMinutes)
-        let entry = Self.resumeEntry(
+        let entry = PlaybackRequest.resumeEntry(
             for: item,
             contentId: contentId,
-            imdbId: Self.imdbId(for: item),
+            imdbId: PlaybackRequest.imdbId(for: item),
             runtimeMinutes: runtimeMinutes
         )
         if engine == .native {
@@ -378,7 +326,7 @@ final class PlaybackCoordinator {
                 position: position,
                 entry: entry,
                 contentKey: contentId,
-                metadata: Self.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes)
+                metadata: PlaybackRequest.sessionMetadata(for: item, subtitle: nil, runtimeMinutes: runtimeMinutes)
             )
             return
         }
@@ -388,7 +336,7 @@ final class PlaybackCoordinator {
         }
         let playItem = InfusePlayItem(
             videoURL: videoURL,
-            filename: Self.infuseFilename(for: item, filename: chosen.behaviorHints?.filename),
+            filename: PlaybackRequest.infuseFilename(for: item, filename: chosen.behaviorHints?.filename),
             positionSeconds: position
         )
         guard let url = InfuseURLBuilder.playURL(item: playItem) else {
@@ -415,7 +363,7 @@ final class PlaybackCoordinator {
         generation: Int
     ) async {
         let query: (profile: StreamProfile, type: String)
-        switch Self.streamQuery(videoId: episode.videoId, isAnime: item.isAnime, mode: mode) {
+        switch PlaybackRequest.streamQuery(videoId: episode.videoId, isAnime: item.isAnime, mode: mode) {
         case .failure(let error):
             state = .failed(error)
             return
@@ -459,7 +407,7 @@ final class PlaybackCoordinator {
                 )
             }
         )
-        let entry = Self.resumeEntry(for: item, seriesId: seriesId, episode: episode)
+        let entry = PlaybackRequest.resumeEntry(for: item, seriesId: seriesId, episode: episode)
         if engine == .native {
             startNativeSession(
                 videoURL: videoURL,
@@ -468,7 +416,7 @@ final class PlaybackCoordinator {
                 entry: entry,
                 episodeContext: context,
                 contentKey: episode.videoId,
-                metadata: Self.sessionMetadata(
+                metadata: PlaybackRequest.sessionMetadata(
                     for: item,
                     subtitle: episode.title.isEmpty ? nil : episode.title,
                     runtimeMinutes: episode.runtimeMinutes,
@@ -484,7 +432,7 @@ final class PlaybackCoordinator {
         }
         let playItem = InfusePlayItem(
             videoURL: videoURL,
-            filename: Self.infuseFilename(item: item, episode: episode, filename: chosen.behaviorHints?.filename),
+            filename: PlaybackRequest.infuseFilename(item: item, episode: episode, filename: chosen.behaviorHints?.filename),
             positionSeconds: position
         )
         guard let url = InfuseURLBuilder.playURL(item: playItem) else {
@@ -505,7 +453,7 @@ final class PlaybackCoordinator {
         do {
             return .success(try await fetchStreams(profile: profile, type: type, id: id))
         } catch let error as StreamsAPIError {
-            return .failure(Self.playbackError(for: error))
+            return .failure(PlaybackRequest.playbackError(for: error))
         } catch {
             return .failure(.network)
         }
@@ -527,151 +475,11 @@ final class PlaybackCoordinator {
         return ResumePolicy.startSeconds(position: entry.positionSeconds, runtimeMinutes: runtimeMinutes)
     }
 
-    private static func streamQuery(
-        for item: MediaItem,
-        mode: PlaybackMode
-    ) -> Result<(profile: StreamProfile, type: String, id: String), PlaybackError> {
-        if item.isAnime {
-            guard let animeId = animeStreamId(for: item) else { return .failure(.missingImdbId) }
-            return .success((.anime, "anime", animeId))
-        }
-        guard let profile = StreamProfile(mode: mode) else { return .failure(.enhancedUnavailable) }
-        guard let imdbId = imdbId(for: item) else { return .failure(.missingImdbId) }
-        return .success((profile, "movie", imdbId))
-    }
-
-    private static func streamQuery(
-        videoId: String,
-        isAnime: Bool,
-        mode: PlaybackMode
-    ) -> Result<(profile: StreamProfile, type: String), PlaybackError> {
-        let request = streamRequest(videoId: videoId, isAnime: isAnime)
-        if let fixed = request.profile {
-            return .success((fixed, request.type))
-        }
-        guard let profile = StreamProfile(mode: mode) else { return .failure(.enhancedUnavailable) }
-        return .success((profile, request.type))
-    }
-
     nonisolated static func streamRequest(videoId: String, isAnime: Bool) -> (type: String, profile: StreamProfile?) {
-        let animePrefixes = ["kitsu:", "mal:", "anilist:"]
-        if animePrefixes.contains(where: videoId.hasPrefix) {
-            return ("anime", .anime)
-        }
-        if isAnime {
-            return ("series", .anime)
-        }
-        return ("series", nil)
-    }
-
-    private static func imdbId(for item: MediaItem) -> String? {
-        if let id = item.imdbId, id.hasPrefix("tt") { return id }
-        if let id = item.contentId, id.hasPrefix("tt") { return id }
-        return nil
-    }
-
-    private static func animeStreamId(for item: MediaItem) -> String? {
-        if let id = item.contentId, id.hasPrefix("mal:") || id.hasPrefix("kitsu:") { return id }
-        return imdbId(for: item)
-    }
-
-    private static func playbackError(for error: StreamsAPIError) -> PlaybackError {
-        switch error {
-        case .notConfigured: .notConfigured
-        case .rateLimited: .rateLimited
-        case .invalidURL: .notConfigured
-        case .badStatus, .transport: .network
-        case .decoding: .noSources
-        }
-    }
-
-    private static func infuseFilename(for item: MediaItem, filename: String?) -> String {
-        let ext = fileExtension(from: filename)
-        guard item.year > 0 else { return "\(item.title).\(ext)" }
-        return "\(item.title) (\(item.year)).\(ext)"
+        PlaybackRequest.streamRequest(videoId: videoId, isAnime: isAnime)
     }
 
     nonisolated static func infuseFilename(item: MediaItem, episode: EpisodeItem, filename: String?) -> String {
-        let code = String(format: "S%02dE%02d", episode.season, episode.episode)
-        return "\(item.title) \(code).\(fileExtension(from: filename))"
-    }
-
-    nonisolated private static func fileExtension(from filename: String?) -> String {
-        let knownExtensions: Set<String> = ["mkv", "mp4", "m4v", "avi", "ts", "webm", "mov"]
-        return filename
-            .map { ($0 as NSString).pathExtension.lowercased() }
-            .flatMap { knownExtensions.contains($0) ? $0 : nil }
-            ?? "mkv"
-    }
-
-    private static func sessionMetadata(
-        for item: MediaItem,
-        subtitle: String?,
-        runtimeMinutes: Int?,
-        seasonNumber: Int? = nil,
-        episodeNumber: Int? = nil
-    ) -> NativeSessionMetadata {
-        NativeSessionMetadata(
-            subtitle: subtitle,
-            synopsis: item.synopsis.isEmpty ? nil : item.synopsis,
-            artworkURL: item.backdropURL ?? item.posterURL,
-            year: item.year > 0 ? item.year : nil,
-            genres: item.genres,
-            runtimeMinutes: runtimeMinutes,
-            ageRatingLabel: item.ageRating?.label,
-            ratingLabel: item.imdbRating,
-            seasonNumber: seasonNumber,
-            episodeNumber: episodeNumber,
-            cast: item.cast,
-            directors: item.directors
-        )
-    }
-
-    private static func resumeEntry(for item: MediaItem, seriesId: String, episode: EpisodeItem) -> ResumeEntry {
-        ResumeEntry(
-            contentId: seriesId,
-            imdbId: imdbId(for: item),
-            title: item.title,
-            year: item.year,
-            posterURL: item.posterURL,
-            backdropURL: item.backdropURL,
-            logoURL: item.logoURL,
-            runtimeMinutes: episode.runtimeMinutes,
-            positionSeconds: 0,
-            updatedAt: Date(),
-            serviceCode: item.streamingSource?.rawValue,
-            synopsis: item.synopsis,
-            genres: item.genres,
-            mediaKind: item.kind.rawValue,
-            metaId: item.contentId,
-            videoId: episode.videoId,
-            season: episode.season,
-            episode: episode.episode,
-            episodeTitle: episode.title
-        )
-    }
-
-    private static func resumeEntry(
-        for item: MediaItem,
-        contentId: String,
-        imdbId: String?,
-        runtimeMinutes: Int?
-    ) -> ResumeEntry {
-        ResumeEntry(
-            contentId: contentId,
-            imdbId: imdbId,
-            title: item.title,
-            year: item.year,
-            posterURL: item.posterURL,
-            backdropURL: item.backdropURL,
-            logoURL: item.logoURL,
-            runtimeMinutes: runtimeMinutes,
-            positionSeconds: 0,
-            updatedAt: Date(),
-            serviceCode: item.streamingSource?.rawValue,
-            synopsis: item.synopsis,
-            genres: item.genres,
-            mediaKind: item.kind.rawValue
-        )
+        PlaybackRequest.infuseFilename(item: item, episode: episode, filename: filename)
     }
 }
