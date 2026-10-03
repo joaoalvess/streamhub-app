@@ -4,9 +4,7 @@ import Observation
 @Observable
 final class MetaProvider {
     private let api: MetadataAPI
-    private var cache: [String: (fetchedAt: Date, detail: MetaDetail?)] = [:]
-    private var inFlight: [String: Task<MetaDetail?, any Error>] = [:]
-    private static let cacheTTL: TimeInterval = 600
+    private let cache = AsyncTTLCache<String, MetaDetail?>(ttl: 600, capacity: 30)
 
     init(api: MetadataAPI = MetadataAPI()) {
         self.api = api
@@ -14,20 +12,10 @@ final class MetaProvider {
 
     func detail(for item: MediaItem) async throws -> MetaDetail? {
         guard let request = Self.metaRequest(for: item) else { return nil }
-        let key = "\(request.type)|\(request.id)"
-        if let cached = cache[key], Date().timeIntervalSince(cached.fetchedAt) < Self.cacheTTL {
-            return cached.detail
-        }
-        if let running = inFlight[key] {
-            return try await running.value
-        }
         let api = self.api
-        let task = Task { try await api.meta(type: request.type, id: request.id) }
-        inFlight[key] = task
-        defer { inFlight[key] = nil }
-        let detail = try await task.value
-        cache[key] = (Date(), detail)
-        return detail
+        return try await cache.value(for: "\(request.type)|\(request.id)") {
+            try await api.meta(type: request.type, id: request.id)
+        }
     }
 
     nonisolated static func metaRequest(for item: MediaItem) -> (type: String, id: String)? {

@@ -37,8 +37,7 @@ nonisolated struct StreamsAPI {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         do {
-            let (data, _) = try await HTTP.data(for: request, session: session)
-            return try HTTP.decode(StreamsResponse.self, from: data)
+            return try await HTTP.fetch(StreamsResponse.self, for: request, session: session)
         } catch HTTPFailure.status(429, let response) {
             let retryAfter = Self.retryDelay(from: response)
             guard attempt < 2 else {

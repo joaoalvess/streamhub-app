@@ -87,8 +87,7 @@ actor JellyfinSession {
         }
         let result: JellyfinAuthResult
         do {
-            let (data, _) = try await HTTP.data(for: request, session: session)
-            result = try HTTP.decode(JellyfinAuthResult.self, from: data)
+            result = try await HTTP.fetch(JellyfinAuthResult.self, for: request, session: session)
         } catch let failure as HTTPFailure {
             throw JellyfinError(failure)
         }

@@ -193,16 +193,15 @@ nonisolated struct JellyfinAPI {
         ])
     }
 
-    private func get<T: Decodable>(path: String, query: [URLQueryItem], context: JellyfinContext) async throws -> T {
+    private func get<T: Decodable & Sendable>(path: String, query: [URLQueryItem], context: JellyfinContext) async throws -> T {
         guard let url = Self.url(base: context.baseURL, path: path, query: query) else {
             throw JellyfinError.notConfigured
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue(context.authorizationHeader, forHTTPHeaderField: "Authorization")
-        let data = try await send(request)
         do {
-            return try HTTP.decode(T.self, from: data)
+            return try await HTTP.fetch(T.self, for: request, session: session)
         } catch let failure as HTTPFailure {
             throw JellyfinError(failure)
         }

@@ -120,10 +120,8 @@ final class PlaybackCoordinator {
 
     private let api: StreamsAPI
     private let watchHub = WatchHubAPI()
-    private var cache: [String: (fetchedAt: Date, streams: [AddonStream])] = [:]
-    private var inFlight: [String: Task<[AddonStream], any Error>] = [:]
+    private let cache = AsyncTTLCache<String, [AddonStream]>(ttl: 60, capacity: 10)
     private var playGeneration = 0
-    private static let cacheTTL: TimeInterval = 60
 
     init(api: StreamsAPI = StreamsAPI(), progressStore: PlaybackProgressStore = PlaybackProgressStore()) {
         self.api = api
@@ -506,20 +504,10 @@ final class PlaybackCoordinator {
     }
 
     private func fetchStreams(profile: StreamProfile, type: String, id: String) async throws -> [AddonStream] {
-        let key = "\(profile.rawValue)|\(type)|\(id)"
-        if let cached = cache[key], Date().timeIntervalSince(cached.fetchedAt) < Self.cacheTTL {
-            return cached.streams
-        }
-        if let running = inFlight[key] {
-            return try await running.value
-        }
         let api = self.api
-        let task = Task { try await api.streams(profile: profile, type: type, id: id) }
-        inFlight[key] = task
-        defer { inFlight[key] = nil }
-        let streams = try await task.value
-        cache[key] = (Date(), streams)
-        return streams
+        return try await cache.value(for: "\(profile.rawValue)|\(type)|\(id)") {
+            try await api.streams(profile: profile, type: type, id: id)
+        }
     }
 
     private func resumePosition(for contentId: String, runtimeMinutes: Int?) -> Int? {
