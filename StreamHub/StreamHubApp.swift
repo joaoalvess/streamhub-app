@@ -15,6 +15,7 @@ struct StreamHubApp: App {
     @State private var profileStore: ProfileStore
     @State private var recentSearches: RecentSearchesStore
     @State private var myList: MyListStore
+    @State private var toasts: ToastCenter
 
     init() {
         SecretsStore.shared.bootstrapIfNeeded()
@@ -26,6 +27,7 @@ struct StreamHubApp: App {
         _profileStore = State(initialValue: ProfileStore())
         _recentSearches = State(initialValue: RecentSearchesStore())
         _myList = State(initialValue: MyListStore())
+        _toasts = State(initialValue: ToastCenter())
     }
 
     var body: some Scene {
@@ -37,6 +39,7 @@ struct StreamHubApp: App {
                 .environment(metaProvider)
                 .environment(recentSearches)
                 .environment(myList)
+                .environment(toasts)
         }
     }
 }
