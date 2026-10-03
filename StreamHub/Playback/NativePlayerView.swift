@@ -31,7 +31,13 @@ struct NativePlayerView: View {
             player.isScaleAspectFill = false
         }
         .onReceive(player.timemodel.$currentTime) { coordinator?.updateNativePosition($0) }
+        .onReceive(player.timemodel.$totalTime) { total in
+            guard total != Self.placeholderTotalTime else { return }
+            coordinator?.updateNativeDuration(total)
+        }
     }
+
+    private static let placeholderTotalTime = 1
 
     private static func makeOptions(session: NativePlaybackSession) -> KSOptions {
         let options = KSOptions()

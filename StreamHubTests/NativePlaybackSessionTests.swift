@@ -146,6 +146,51 @@ struct NativePlaybackSessionTests {
         #expect(coordinator.progressStore.entries.isEmpty)
     }
 
+    @Test func shorterRealDurationMarksMovieWatchedBeforeRuntime() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry(runtimeMinutes: 142))
+        coordinator.updateNativeDuration(6_000)
+        coordinator.updateNativePosition(5_600)
+        coordinator.completeNativeSession()
+
+        #expect(coordinator.progressStore.entries.isEmpty)
+    }
+
+    @Test func longerRealDurationKeepsMovieInProgressPastRuntime() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry(runtimeMinutes: 100))
+        coordinator.updateNativeDuration(7_200)
+        coordinator.updateNativePosition(5_700)
+        coordinator.completeNativeSession()
+
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 5_700)
+    }
+
+    @Test func zeroDurationIsIgnored() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry(runtimeMinutes: 100))
+        coordinator.updateNativeDuration(7_200)
+        coordinator.updateNativeDuration(0)
+        coordinator.updateNativePosition(5_700)
+        coordinator.completeNativeSession()
+
+        #expect(coordinator.progressStore.position(for: "tt0111161") == 5_700)
+    }
+
+    @Test func durationDoesNotLeakIntoNextSession() throws {
+        let coordinator = try makeCoordinator()
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry(runtimeMinutes: 100))
+        coordinator.updateNativeDuration(7_200)
+        coordinator.updateNativePosition(600)
+        coordinator.completeNativeSession()
+        coordinator.updateNativeDuration(7_200)
+        coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: 600, entry: entry(runtimeMinutes: 100))
+        coordinator.updateNativePosition(5_700)
+        coordinator.completeNativeSession()
+
+        #expect(coordinator.progressStore.entries.isEmpty)
+    }
+
     @Test func switchKeepsSessionIdentityAndUpdatesURL() throws {
         let coordinator = try makeCoordinator()
         coordinator.startNativeSession(videoURL: try videoURL(), title: "Filme", position: nil, entry: entry())

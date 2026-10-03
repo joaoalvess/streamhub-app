@@ -114,6 +114,7 @@ final class PlaybackCoordinator {
     private(set) var state: State = .idle
     private(set) var nativeSession: NativePlaybackSession?
     private var nativePosition: Int?
+    private var nativeDuration: Int?
     var nativePositionSeconds: Int? { nativePosition }
     private(set) var lastEndedNativePosition: Int?
     let progressStore: PlaybackProgressStore
@@ -243,6 +244,7 @@ final class PlaybackCoordinator {
             )
         }
         nativePosition = nil
+        nativeDuration = nil
         lastEndedNativePosition = nil
         nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, contentKey: contentKey, startSeconds: position, metadata: metadata)
         state = .idle
@@ -263,17 +265,23 @@ final class PlaybackCoordinator {
         nativePosition = seconds
     }
 
+    func updateNativeDuration(_ seconds: Int) {
+        guard nativeSession != nil, seconds > 0 else { return }
+        nativeDuration = seconds
+    }
+
     func completeNativeSession() {
         guard let session = nativeSession else { return }
         nativeSession = nil
         let videoURL = session.videoURL.absoluteString
         if let position = nativePosition {
-            progressStore.applyCallback(lastPlayedURL: videoURL, position: position)
+            progressStore.applyCallback(lastPlayedURL: videoURL, position: position, duration: nativeDuration)
         } else {
             progressStore.discardSession(videoURL: videoURL)
         }
         lastEndedNativePosition = nativePosition
         nativePosition = nil
+        nativeDuration = nil
     }
 
     private func beginPlay() -> Int {
