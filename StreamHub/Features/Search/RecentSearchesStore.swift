@@ -52,6 +52,17 @@ final class RecentSearchesStore {
         entries = Self.load(key: Self.entriesKey(for: id), defaults: defaults)
     }
 
+    func adoptLegacyDataIfNeeded(for profileID: UUID) {
+        let targetKey = Self.entriesKey(for: profileID)
+        guard defaults.data(forKey: targetKey) == nil,
+              let legacy = defaults.data(forKey: Self.baseKey) else { return }
+        defaults.set(legacy, forKey: targetKey)
+        defaults.removeObject(forKey: Self.baseKey)
+        if activeProfileID == profileID {
+            entries = Self.load(key: targetKey, defaults: defaults)
+        }
+    }
+
     func removeData(for profileID: UUID) {
         defaults.removeObject(forKey: Self.entriesKey(for: profileID))
         if activeProfileID == profileID { entries = [] }

@@ -341,14 +341,25 @@ final class PlaybackProgressStore {
     }
 
     func adoptLegacyDataIfNeeded(for profileID: UUID) {
-        let targetKey = Self.entriesKey(for: profileID)
-        guard defaults.data(forKey: targetKey) == nil,
-              let legacy = defaults.data(forKey: Self.legacyEntriesKey) else { return }
-        defaults.set(legacy, forKey: targetKey)
-        defaults.removeObject(forKey: Self.legacyEntriesKey)
-        if activeProfileID == profileID {
-            entries = Self.load([ResumeEntry].self, key: targetKey, defaults: defaults) ?? []
+        let entriesKey = Self.entriesKey(for: profileID)
+        let watchedKey = Self.watchedKey(for: profileID)
+        let adoptedEntries = adoptLegacyValue(from: Self.legacyEntriesKey, to: entriesKey)
+        let adoptedWatched = adoptLegacyValue(from: Self.legacyWatchedKey, to: watchedKey)
+        guard activeProfileID == profileID else { return }
+        if adoptedEntries {
+            entries = Self.load([ResumeEntry].self, key: entriesKey, defaults: defaults) ?? []
         }
+        if adoptedWatched {
+            watched = Self.load([String: WatchedRecord].self, key: watchedKey, defaults: defaults) ?? [:]
+        }
+    }
+
+    private func adoptLegacyValue(from legacyKey: String, to targetKey: String) -> Bool {
+        guard defaults.data(forKey: targetKey) == nil,
+              let legacy = defaults.data(forKey: legacyKey) else { return false }
+        defaults.set(legacy, forKey: targetKey)
+        defaults.removeObject(forKey: legacyKey)
+        return true
     }
 
     func removeData(for profileID: UUID) {
