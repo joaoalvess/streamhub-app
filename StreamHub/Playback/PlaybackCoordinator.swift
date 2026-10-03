@@ -71,7 +71,7 @@ final class PlaybackCoordinator {
 
     private let api: StreamsAPI
     private let watchHub = WatchHubAPI()
-    private let cache = AsyncTTLCache<String, [AddonStream]>(ttl: 60, capacity: 10)
+    private let cache = AsyncTTLCache<String, [AddonStream]>(ttl: 60, capacity: 10, shouldStore: { !$0.isEmpty })
     private var playGeneration = 0
 
     init(api: StreamsAPI = StreamsAPI(), progressStore: PlaybackProgressStore = PlaybackProgressStore()) {

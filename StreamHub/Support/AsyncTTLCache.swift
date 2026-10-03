@@ -10,14 +10,21 @@ final class AsyncTTLCache<Key: Hashable, Value: Sendable> {
     private let ttl: TimeInterval
     private let capacity: Int
     private let now: () -> Date
+    private let shouldStore: (Value) -> Bool
     private var entries: [Key: Entry] = [:]
     private var inFlight: [Key: Task<Value, any Error>] = [:]
     private var accessCount = 0
 
-    init(ttl: TimeInterval, capacity: Int, now: @escaping () -> Date = Date.init) {
+    init(
+        ttl: TimeInterval,
+        capacity: Int,
+        now: @escaping () -> Date = Date.init,
+        shouldStore: @escaping (Value) -> Bool = { _ in true }
+    ) {
         self.ttl = ttl
         self.capacity = capacity
         self.now = now
+        self.shouldStore = shouldStore
     }
 
     func value(for key: Key, load: @escaping () async throws -> Value) async throws -> Value {
@@ -36,7 +43,7 @@ final class AsyncTTLCache<Key: Hashable, Value: Sendable> {
         let result = await task.result
         if inFlight[key] == task {
             inFlight[key] = nil
-            if case .success(let value) = result {
+            if case .success(let value) = result, shouldStore(value) {
                 store(value, for: key)
             }
         }

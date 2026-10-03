@@ -131,4 +131,16 @@ struct AsyncTTLCacheTests {
         #expect(reloaded == 2)
         #expect(counter.calls == 2)
     }
+
+    @Test func rejectedValueIsNotCached() async throws {
+        let counter = LoadCounter()
+        let cache = AsyncTTLCache<String, [Int]>(ttl: 60, capacity: 10, shouldStore: { !$0.isEmpty })
+        let empty = try await cache.value(for: "a", load: counting(counter, returning: [Int]()))
+        let filled = try await cache.value(for: "a", load: counting(counter, returning: [1]))
+        let cached = try await cache.value(for: "a", load: counting(counter, returning: [2]))
+        #expect(empty.isEmpty)
+        #expect(filled == [1])
+        #expect(cached == [1])
+        #expect(counter.calls == 2)
+    }
 }
