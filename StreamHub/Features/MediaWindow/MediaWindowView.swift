@@ -1,22 +1,23 @@
 import SwiftUI
-import ImageIO
 
 /// Tela intermediária ao selecionar um título. Apresenta um carrossel de
 /// backdrops (window) que expande para fullscreen ao pressionar cima/baixo ou
 /// o botão central. Voltar: ficha completa → fullscreen → window → home.
 struct MediaWindowView: View {
     static let expandDuration: TimeInterval = 0.55
+    private static let seriesDebounce: Duration = .milliseconds(350)
 
     let row: CatalogRow
     let startIndex: Int
 
     @State private var centerIndex: Int
+    @State private var hasLeftStart = false
     @State private var autoplayPending: Bool
     @State private var isFullscreen = false
     @State private var showsInfo = false
     @State private var showsSources = false
     @State private var sourcesTarget: PlayTarget?
-    @State private var loaded: Loaded?
+    @State private var loaded: LoadedWindow?
     @State private var playbackMode: PlaybackMode = .dubbed
     @State private var playerEngine: PlayerEngine = .stored()
     @State private var seriesModel = SeriesDetailViewModel()
@@ -24,6 +25,7 @@ struct MediaWindowView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(PlaybackCoordinator.self) private var coordinator: PlaybackCoordinator?
     @Environment(MetaProvider.self) private var metaProvider: MetaProvider?
+    @Environment(MyListStore.self) private var myList: MyListStore?
 
     private enum ScrollAnchor: Hashable { case top, episodes }
 
@@ -104,6 +106,7 @@ struct MediaWindowView: View {
         }
         .animation(.smooth(duration: Self.expandDuration), value: isFullscreen)
         .onChange(of: centerIndex) { _, _ in
+            hasLeftStart = true
             autoplayPending = false
             withAnimation(.easeOut(duration: 0.25)) { loaded = nil }
         }
@@ -116,7 +119,11 @@ struct MediaWindowView: View {
             }
         }
         .task(id: centerIndex) { await loadAssets() }
-        .task(id: centerIndex) { await loadSeries() }
+        .task(id: centerIndex) { await loadSeries(after: isAtInitialTitle ? .zero : Self.seriesDebounce) }
+        .onDisappear {
+            guard let coordinator, coordinator.nativeSession == nil else { return }
+            coordinator.invalidatePendingPlay()
+        }
         .disabled(nativeSession != nil)
         .accessibilityHidden(nativeSession != nil)
         .overlay {
@@ -148,7 +155,7 @@ struct MediaWindowView: View {
 
     private var isAutoplayReady: Bool {
         guard let item = loaded?.item else { return false }
-        guard isSeriesLike(item) else { return true }
+        guard PlayPlanner.isSeriesLike(item) else { return true }
         switch seriesModel.phase {
         case .loaded, .unavailable, .failed:
             return true
@@ -168,7 +175,7 @@ struct MediaWindowView: View {
         }
     }
 
-    private func overlayView(for loaded: Loaded) -> some View {
+    private func overlayView(for loaded: LoadedWindow) -> some View {
         WindowInfoOverlay(
             item: loaded.item,
             logo: loaded.logo,
@@ -179,6 +186,7 @@ struct MediaWindowView: View {
             showsModeSelector: showsModeSelector(for: loaded.item),
             playbackMode: playbackMode,
             playerEngine: playerEngine,
+            isInMyList: myList?.contains(loaded.item) ?? false,
             onPlay: { play(loaded.item) },
             onCycleMode: {
                 guard !showsSources else { return }
@@ -190,11 +198,13 @@ struct MediaWindowView: View {
                 playerEngine = playerEngine.next
                 playerEngine.store()
             },
+            onAdd: { myList?.toggle(loaded.item) },
+            onInfo: showDetails,
             onShowDetails: showDetails
         )
     }
 
-    private func episodePages(for loaded: Loaded, size: CGSize) -> some View {
+    private func episodePages(for loaded: LoadedWindow, size: CGSize) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: Theme.Metrics.rowSpacing) {
@@ -208,7 +218,7 @@ struct MediaWindowView: View {
 
                         EpisodesSectionView(
                             model: seriesModel,
-                            seriesId: seriesId(for: loaded.item),
+                            seriesId: PlayPlanner.seriesId(for: loaded.item),
                             ageRating: loaded.item.ageRating,
                             progressStore: coordinator?.progressStore,
                             focus: $focus,
@@ -233,7 +243,7 @@ struct MediaWindowView: View {
         }
     }
 
-    private func episodesLogo(for loaded: Loaded) -> some View {
+    private func episodesLogo(for loaded: LoadedWindow) -> some View {
         Group {
             if let logo = loaded.logo {
                 logo
@@ -290,31 +300,25 @@ struct MediaWindowView: View {
         return nil
     }
 
-    private func isSeriesLike(_ item: MediaItem) -> Bool {
-        item.kind == .series || item.isAnime
-    }
-
-    private func seriesId(for item: MediaItem) -> String {
-        PlaybackProgressStore.seriesKey(for: item) ?? item.contentId ?? ""
-    }
-
     private func resumeEntry(for item: MediaItem) -> ResumeEntry? {
-        coordinator?.progressStore.entries.first { $0.contentId == seriesId(for: item) }
+        coordinator?.progressStore.entry(forSeries: PlayPlanner.seriesId(for: item))
     }
 
-    private func episodeFromEntry(for item: MediaItem) -> EpisodeItem? {
-        guard let entry = resumeEntry(for: item), let videoId = entry.videoId else { return nil }
-        return EpisodeItem(
-            videoId: videoId,
-            season: entry.season ?? 1,
-            episode: entry.episode ?? 1,
-            title: entry.episodeTitle ?? item.title,
-            overview: nil,
-            thumbnailURL: nil,
-            releasedAt: nil,
-            runtimeMinutes: entry.runtimeMinutes,
-            isReleased: true
-        )
+    private func playContext(for item: MediaItem) -> PlayPlanner.Context {
+        guard PlayPlanner.isSeriesLike(item) else { return .movie }
+        switch seriesModel.phase {
+        case .loaded:
+            let next = seriesModel.nextEpisode(store: coordinator?.progressStore, seriesId: PlayPlanner.seriesId(for: item))
+            return .loaded(
+                next: next,
+                nextAfter: next.flatMap { seriesModel.episodeAfter($0) },
+                defaultVideoId: seriesModel.detail?.behaviorHints?.defaultVideoId
+            )
+        case .unavailable:
+            return .unavailable(defaultVideoId: seriesModel.detail?.behaviorHints?.defaultVideoId)
+        case .idle, .loading, .failed:
+            return .pending(resume: resumeEntry(for: item))
+        }
     }
 
     private func playLabel(for item: MediaItem) -> String {
@@ -322,34 +326,19 @@ struct MediaWindowView: View {
            case .externalService(let service) = coordinator.route(for: item) {
             return service.playCTA
         }
-        guard isSeriesLike(item) else { return "Reproduzir" }
+        guard PlayPlanner.isSeriesLike(item) else { return "Reproduzir" }
         switch seriesModel.phase {
         case .loaded:
-            return seriesModel.playLabel(store: coordinator?.progressStore, seriesId: seriesId(for: item))
+            return seriesModel.playLabel(store: coordinator?.progressStore, seriesId: PlayPlanner.seriesId(for: item))
         case .idle, .loading, .failed:
-            if let entry = resumeEntry(for: item), entry.videoId != nil, let code = entry.episodeCode {
-                return entry.positionSeconds > 0 ? "Continuar \(code)" : "Reproduzir \(code)"
-            }
-            return "Reproduzir"
+            return PlayPlanner.resumeLabel(for: resumeEntry(for: item))
         case .unavailable:
             return "Reproduzir"
         }
     }
 
     private func isPlayEnabled(for item: MediaItem) -> Bool {
-        guard isSeriesLike(item) else { return true }
-        switch seriesModel.phase {
-        case .loaded:
-            if seriesModel.nextEpisode(store: coordinator?.progressStore, seriesId: seriesId(for: item)) != nil {
-                return true
-            }
-            return item.kind == .series && !item.isAnime
-                && seriesModel.detail?.behaviorHints?.defaultVideoId != nil
-        case .unavailable:
-            return true
-        case .idle, .loading, .failed:
-            return episodeFromEntry(for: item) != nil
-        }
+        PlayPlanner.isPlayEnabled(for: item, in: playContext(for: item))
     }
 
     private func showsModeSelector(for item: MediaItem) -> Bool {
@@ -409,43 +398,7 @@ struct MediaWindowView: View {
     }
 
     private func resolvePlayTarget(for item: MediaItem) -> PlayResolution {
-        guard isSeriesLike(item) else { return .target(.movie) }
-        switch seriesModel.phase {
-        case .loaded:
-            if let next = seriesModel.nextEpisode(store: coordinator?.progressStore, seriesId: seriesId(for: item)) {
-                return .target(.episode(next, next: seriesModel.episodeAfter(next)))
-            }
-            if item.kind == .series, !item.isAnime {
-                return fallbackTarget(for: item)
-            }
-            return .blocked(.noEpisodes)
-        case .unavailable:
-            if item.kind == .series, !item.isAnime {
-                return fallbackTarget(for: item)
-            }
-            return .target(.movie)
-        case .idle, .loading, .failed:
-            guard let episode = episodeFromEntry(for: item) else { return .pending }
-            return .target(.episode(episode, next: nil))
-        }
-    }
-
-    private func fallbackTarget(for item: MediaItem) -> PlayResolution {
-        guard let defaultId = seriesModel.detail?.behaviorHints?.defaultVideoId else {
-            return .blocked(.noEpisodes)
-        }
-        let episode = EpisodeItem(
-            videoId: defaultId,
-            season: 1,
-            episode: 1,
-            title: item.title,
-            overview: nil,
-            thumbnailURL: nil,
-            releasedAt: nil,
-            runtimeMinutes: RuntimeParser.minutes(from: item.runtime),
-            isReleased: true
-        )
-        return .target(.episode(episode, next: nil))
+        PlayPlanner.resolveTarget(for: item, in: playContext(for: item))
     }
 
     private func holdMode(_ item: MediaItem) {
@@ -473,22 +426,13 @@ struct MediaWindowView: View {
         focus = .mode
         guard let coordinator, let target = sourcesTarget else { return }
         sourcesTarget = nil
-        if let contentKey = contentKey(for: target, item: item),
+        if let contentKey = PlayPlanner.contentKey(for: target, item: item),
            coordinator.nativeSession?.contentKey == contentKey,
            let videoURL = stream.playbackURL {
             coordinator.switchNativeSource(videoURL: videoURL)
             return
         }
         start(target, item: item, coordinator: coordinator, preferredStream: stream)
-    }
-
-    private func contentKey(for target: PlayTarget, item: MediaItem) -> String? {
-        switch target {
-        case .movie:
-            return item.contentId
-        case .episode(let episode, _):
-            return episode.videoId
-        }
     }
 
     private func enterFullscreen() {
@@ -519,10 +463,23 @@ struct MediaWindowView: View {
         }
     }
 
-    private func loadSeries() async {
+    private var isAtInitialTitle: Bool {
+        !hasLeftStart && centerIndex == max(0, startIndex)
+    }
+
+    private var assetsSettleDelay: TimeInterval {
+        guard isAtInitialTitle else { return BackdropCarousel.settleDuration }
+        return autoplayPending ? BackdropCarousel.slideDuration : 0
+    }
+
+    private func loadSeries(after delay: Duration = .zero) async {
         seriesModel = SeriesDetailViewModel()
         let item = row.item(at: centerIndex)
-        guard isSeriesLike(item), let metaProvider else { return }
+        guard PlayPlanner.isSeriesLike(item), let metaProvider else { return }
+        if delay > .zero {
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+        }
         await seriesModel.load(item: item, provider: metaProvider, store: coordinator?.progressStore)
     }
 
@@ -534,92 +491,29 @@ struct MediaWindowView: View {
     private func loadAssets() async {
         let index = centerIndex
         let item = row.item(at: index)
-        async let backdrop = WindowAssetLoader.image(item.backdropURL)
-        async let logo = WindowAssetLoader.image(item.logoURL)
-        try? await Task.sleep(for: .seconds(BackdropCarousel.slideDuration))
+        let settleDelay = assetsSettleDelay
+        async let backdrop = Self.image(item.backdropURL, maxPixelSize: ImageSize.backdrop)
+        async let logo = Self.image(item.logoURL, maxPixelSize: ImageSize.logo)
+        if settleDelay > 0 {
+            try? await Task.sleep(for: .seconds(settleDelay))
+        }
         let backdropImage = await backdrop
         let logoImage = await logo
         guard !Task.isCancelled, centerIndex == index else { return }
         withAnimation(.easeOut(duration: 0.6)) {
-            loaded = Loaded(
+            loaded = LoadedWindow(
                 item: item,
                 backdrop: backdropImage.map { Image(decorative: $0, scale: 1) },
                 logo: logoImage.map { Image(decorative: $0, scale: 1) }
             )
         }
     }
-}
 
-/// Camada sobre o backdrop central do carrossel: invisível na window (a imagem
-/// visível é a do carrossel, evitando crossfade da foto sobre ela mesma); na
-/// expansão para fullscreen a própria cópia da imagem surge e anima junto — o
-/// scroll embaixo nunca muda.
-private struct HeroCard: View {
-    let item: MediaItem
-    var backdrop: Image?
-    var isFullscreen: Bool
-
-    var body: some View {
-        backdropView
-            .animation(imageFade) { view in
-                view.opacity(isFullscreen ? 1 : 0)
-            }
-            .clipShape(UnevenRoundedRectangle(
-                topLeadingRadius: topRadius,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: topRadius,
-                style: .continuous
-            ))
-    }
-
-    private var topRadius: CGFloat { isFullscreen ? 0 : Theme.Radius.window }
-
-    private var imageFade: Animation {
-        isFullscreen
-            ? .easeOut(duration: 0.1)
-            : .easeOut(duration: 0.1).delay(MediaWindowView.expandDuration - 0.1)
-    }
-
-    @ViewBuilder
-    private var backdropView: some View {
-        if let backdrop {
-            Color.clear
-                .overlay {
-                    backdrop
-                        .resizable()
-                        .scaledToFill()
-                }
-                .clipped()
-        } else {
-            item.tint ?? Theme.bgElevated
+    private static func image(_ url: URL?, maxPixelSize: Int) async -> CGImage? {
+        guard let url else { return nil }
+        if let cached = ImagePipeline.shared.cachedImage(for: url, maxPixelSize: maxPixelSize) {
+            return cached
         }
-    }
-}
-
-private struct Loaded {
-    let item: MediaItem
-    let backdrop: Image?
-    let logo: Image?
-}
-
-private enum PlayTarget {
-    case movie
-    case episode(EpisodeItem, next: EpisodeItem?)
-}
-
-private enum PlayResolution {
-    case target(PlayTarget)
-    case blocked(PlaybackCoordinator.PlaybackError)
-    case pending
-}
-
-private enum WindowAssetLoader {
-    static func image(_ url: URL?) async -> CGImage? {
-        guard let url,
-              let (data, _) = try? await URLSession.shared.data(from: url),
-              let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
-        return image
+        return await ImagePipeline.shared.image(for: url, maxPixelSize: maxPixelSize)
     }
 }

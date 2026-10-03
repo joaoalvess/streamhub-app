@@ -81,19 +81,30 @@ struct EpisodesSectionView: View {
         style: EpisodeCardView.Style,
         focusCase: @escaping (Int) -> WindowFocus
     ) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        let seriesProgress = model.seriesProgress(store: progressStore, seriesId: seriesId)
+        let focused = focus.wrappedValue
+        return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: Theme.Metrics.cardSpacing) {
-                ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
+                ForEach(episodes) { episode in
+                    let index = model.position(of: episode) ?? 0
+                    let isWatched = seriesProgress.isWatched(episode)
                     EpisodeCardView(
                         episode: episode,
-                        progress: model.progress(for: episode, store: progressStore, seriesId: seriesId),
-                        isWatched: model.isWatched(episode, store: progressStore, seriesId: seriesId),
+                        progress: seriesProgress.progress(for: episode),
+                        isWatched: isWatched,
                         style: style,
                         ageRating: ageRating,
-                        isFocused: focus.wrappedValue == focusCase(index),
+                        isFocused: focused == focusCase(index),
                         onSelect: { onPlay(episode) }
                     )
                     .focused(focus, equals: focusCase(index))
+                    .contextMenu {
+                        if episode.isReleased {
+                            Button(isWatched ? "Marcar como não assistido" : "Marcar como assistido") {
+                                toggleWatched(episode)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, Theme.Metrics.edgeH)
@@ -101,6 +112,19 @@ struct EpisodesSectionView: View {
         }
         .scrollClipDisabled()
         .focusSection()
+    }
+
+    private func toggleWatched(_ episode: EpisodeItem) {
+        let next = model.episodeAfter(episode).map {
+            NextEpisodeRef(
+                videoId: $0.videoId,
+                season: $0.season,
+                episode: $0.episode,
+                title: $0.title,
+                runtimeMinutes: $0.runtimeMinutes
+            )
+        }
+        progressStore?.toggleWatched(seriesId: seriesId, videoId: episode.videoId, next: next)
     }
 
     private var retrySection: some View {

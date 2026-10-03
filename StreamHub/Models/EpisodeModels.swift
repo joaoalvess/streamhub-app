@@ -23,8 +23,87 @@ nonisolated struct SeasonGroup: Identifiable, Hashable, Sendable {
     var label: String { number == 0 ? "Especiais" : "Temporada \(number)" }
 }
 
+nonisolated struct EpisodeTimeline: Sendable {
+    let seasons: [SeasonGroup]
+    private let order: [EpisodeItem]
+    private let orderPositions: [String: Int]
+    private let seasonPositions: [Int: [String: Int]]
+
+    init(seasons: [SeasonGroup]) {
+        self.seasons = seasons
+        let order = seasons
+            .filter { $0.number != 0 }
+            .flatMap { $0.episodes.filter(\.isReleased) }
+        self.order = order
+        orderPositions = Self.firstPositions(of: order)
+        var seasonPositions: [Int: [String: Int]] = [:]
+        for group in seasons {
+            seasonPositions[group.number] = Self.firstPositions(of: group.episodes)
+        }
+        self.seasonPositions = seasonPositions
+    }
+
+    func nextUnwatched(resume: ResumeEntry?, watched: Set<String>) -> EpisodeItem? {
+        guard !order.isEmpty else { return nil }
+        if let resume, let videoId = resume.videoId {
+            if let position = orderPositions[videoId],
+               (resume.progress ?? 0) < ResumePolicy.completionRatio {
+                return order[position]
+            }
+            let known = seasonPositions.values.contains { $0[videoId] != nil }
+            if !known,
+               let season = resume.season,
+               let episode = resume.episode,
+               let match = order.first(where: { $0.season == season && $0.episode == episode }) {
+                return match
+            }
+        }
+        return order.first { !watched.contains($0.videoId) } ?? order.first
+    }
+
+    func episodeAfter(_ episode: EpisodeItem) -> EpisodeItem? {
+        guard let index = orderPositions[episode.videoId] else { return nil }
+        let nextIndex = index + 1
+        guard nextIndex < order.count else { return nil }
+        return order[nextIndex]
+    }
+
+    func position(of episode: EpisodeItem) -> Int? {
+        seasonPositions[episode.season]?[episode.videoId]
+    }
+
+    private static func firstPositions(of episodes: [EpisodeItem]) -> [String: Int] {
+        var positions: [String: Int] = [:]
+        for (index, episode) in episodes.enumerated() where positions[episode.videoId] == nil {
+            positions[episode.videoId] = index
+        }
+        return positions
+    }
+}
+
+nonisolated struct SeriesProgress {
+    let resume: ResumeEntry?
+    let watched: Set<String>
+    let next: EpisodeItem?
+
+    func progress(for episode: EpisodeItem) -> Double? {
+        guard let resume, resume.videoId == episode.videoId else { return nil }
+        return resume.progress
+    }
+
+    func isWatched(_ episode: EpisodeItem) -> Bool {
+        watched.contains(episode.videoId)
+    }
+}
+
 nonisolated enum EpisodePlanner {
-    private static let completionThreshold = 0.92
+    private static let fractionalDateStyle = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let dateStyle = Date.ISO8601FormatStyle()
+
+    @concurrent
+    static func timeline(from videos: [MetaVideo], fallbackRuntimeMinutes: Int?) async -> EpisodeTimeline {
+        EpisodeTimeline(seasons: seasons(from: videos, fallbackRuntimeMinutes: fallbackRuntimeMinutes))
+    }
 
     static func seasons(
         from videos: [MetaVideo],
@@ -51,32 +130,11 @@ nonisolated enum EpisodePlanner {
         resume: ResumeEntry?,
         watched: Set<String>
     ) -> EpisodeItem? {
-        let order = canonicalOrder(seasons)
-        guard !order.isEmpty else { return nil }
-        if let resume, let videoId = resume.videoId {
-            if let current = order.first(where: { $0.videoId == videoId }),
-               (resume.progress ?? 0) < completionThreshold {
-                return current
-            }
-            let known = seasons.contains { group in
-                group.episodes.contains { $0.videoId == videoId }
-            }
-            if !known,
-               let season = resume.season,
-               let episode = resume.episode,
-               let match = order.first(where: { $0.season == season && $0.episode == episode }) {
-                return match
-            }
-        }
-        return order.first { !watched.contains($0.videoId) } ?? order.first
+        EpisodeTimeline(seasons: seasons).nextUnwatched(resume: resume, watched: watched)
     }
 
     static func episodeAfter(_ episode: EpisodeItem, seasons: [SeasonGroup]) -> EpisodeItem? {
-        let order = canonicalOrder(seasons)
-        guard let index = order.firstIndex(where: { $0.videoId == episode.videoId }) else { return nil }
-        let nextIndex = index + 1
-        guard nextIndex < order.count else { return nil }
-        return order[nextIndex]
+        EpisodeTimeline(seasons: seasons).episodeAfter(episode)
     }
 
     static func defaultSeasonIndex(seasons: [SeasonGroup], next: EpisodeItem?) -> Int {
@@ -95,12 +153,6 @@ nonisolated enum EpisodePlanner {
             return "Continuar \(next.code)"
         }
         return "Reproduzir \(next.code)"
-    }
-
-    private static func canonicalOrder(_ seasons: [SeasonGroup]) -> [EpisodeItem] {
-        seasons
-            .filter { $0.number != 0 }
-            .flatMap { $0.episodes.filter(\.isReleased) }
     }
 
     private static func item(
@@ -131,9 +183,9 @@ nonisolated enum EpisodePlanner {
 
     private static func releaseDate(from string: String?) -> Date? {
         guard let string else { return nil }
-        if let date = try? Date.ISO8601FormatStyle(includingFractionalSeconds: true).parse(string) {
+        if let date = try? fractionalDateStyle.parse(string) {
             return date
         }
-        return try? Date.ISO8601FormatStyle().parse(string)
+        return try? dateStyle.parse(string)
     }
 }

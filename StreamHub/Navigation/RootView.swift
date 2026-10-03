@@ -1,7 +1,21 @@
 import SwiftUI
 
 struct RootView: View {
-    @State private var selection: MenuSection = .filmes
+    @Environment(ProfileStore.self) private var profileStore
+
+    var body: some View {
+        MenuTabView(storageKey: "menu.lastSection.\(profileStore.activeProfileID?.uuidString ?? "none")")
+    }
+}
+
+private struct MenuTabView: View {
+    @AppStorage private var lastSection: String
+    @State private var selection: MenuSection
+
+    init(storageKey: String) {
+        _lastSection = AppStorage(wrappedValue: "", storageKey)
+        _selection = State(initialValue: MenuSection.restored(from: UserDefaults.standard.string(forKey: storageKey)))
+    }
 
     var body: some View {
         TabView(selection: $selection) {
@@ -27,6 +41,10 @@ struct RootView: View {
         .tabViewSidebarHeader { SidebarProfileHeader() }
         .preferredColorScheme(.dark)
         .background(Theme.bg)
+        .onChange(of: selection) { _, section in
+            guard section.isRestorable else { return }
+            lastSection = section.rawValue
+        }
     }
 
     @ViewBuilder

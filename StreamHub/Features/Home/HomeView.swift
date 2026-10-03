@@ -5,6 +5,8 @@ struct HomeView: View {
     @FocusState private var focusedControl: HeroControl?
     @State private var heroTint: Color = Theme.bg
     @Environment(PlaybackProgressStore.self) private var progressStore: PlaybackProgressStore?
+    @Environment(MyListStore.self) private var myList: MyListStore?
+    @Environment(DetailRouter.self) private var router: DetailRouter?
 
     private let config: HomeConfiguration
 
@@ -38,14 +40,30 @@ struct HomeView: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: Theme.Metrics.rowSpacing) {
-                    HeroView(items: viewModel.heroItems, focusedControl: $focusedControl, heroTint: $heroTint)
+                    HeroView(
+                        items: viewModel.heroItems,
+                        focusedControl: $focusedControl,
+                        heroTint: $heroTint,
+                        onPlay: { openHero(at: $0, autoplay: true) },
+                        onInfo: { openHero(at: $0, autoplay: false) },
+                        onToggleMyList: { myList?.toggle($0) },
+                        isInMyList: { myList?.contains($0) ?? false }
+                    )
                         .id(ScrollAnchor.top)
                         .containerRelativeFrame(.vertical) { height, _ in height }
                         .padding(.bottom, -Theme.Metrics.heroOverlap)
                         .zIndex(0)
 
                     if config.showsContinueWatching, let progressStore, !progressStore.entries.isEmpty {
-                        ContinueWatchingRowView(entries: progressStore.entries)
+                        ContinueWatchingRowView(
+                            entries: progressStore.entries,
+                            onRemove: { progressStore.remove(contentId: $0) }
+                        )
+                            .zIndex(1)
+                    }
+
+                    if config.showsContinueWatching, let myList, !myList.entries.isEmpty {
+                        MyListRowView(entries: myList.entries, onRemove: { myList.remove(contentId: $0) })
                             .zIndex(1)
                     }
 
@@ -62,6 +80,13 @@ struct HomeView: View {
             }
             .defaultFocus($focusedControl, .play)
         }
+    }
+
+    private func openHero(at index: Int, autoplay: Bool) {
+        let items = viewModel.heroItems
+        guard let router, items.indices.contains(index) else { return }
+        let row = CatalogRow(staticTitle: "Destaques", style: .standard, items: items)
+        router.open(row: row, index: index, autoplay: autoplay)
     }
 
     private var failureView: some View {

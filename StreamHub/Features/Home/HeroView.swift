@@ -8,7 +8,12 @@ struct HeroView: View {
     let items: [MediaItem]
     var focusedControl: FocusState<HeroControl?>.Binding? = nil
     var heroTint: Binding<Color>? = nil
+    var onPlay: (Int) -> Void = { _ in }
+    var onInfo: (Int) -> Void = { _ in }
+    var onToggleMyList: (MediaItem) -> Void = { _ in }
+    var isInMyList: (MediaItem) -> Bool = { _ in false }
     @State private var index = 0
+    @State private var shownBackdropURL: URL?
 
     @Namespace private var heroFocus
 
@@ -77,12 +82,37 @@ struct HeroView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .bottom) { pageDots }
-        .onAppear { syncTint() }
-        .onChange(of: index) { _, _ in syncTint() }
+        .onAppear {
+            syncTint()
+            prefetchUpcoming()
+        }
+        .onChange(of: index) { _, _ in
+            syncTint()
+            prefetchUpcoming()
+        }
+        .onChange(of: items.count) { _, _ in
+            syncTint()
+            prefetchUpcoming()
+        }
     }
 
     private func syncTint() {
         heroTint?.wrappedValue = current?.tint ?? Theme.bg
+    }
+
+    private func prefetchUpcoming() {
+        guard items.count > 1 else { return }
+        let upcoming = (1...min(2, items.count - 1)).map { items[(index + $0) % items.count] }
+        ImagePipeline.shared.prefetch(upcoming.compactMap(\.backdropURL), maxPixelSize: ImageSize.backdrop)
+        ImagePipeline.shared.prefetch(upcoming.compactMap(\.logoURL), maxPixelSize: ImageSize.logo)
+    }
+
+    private func showBackdrop(_ url: URL?) async {
+        if let url, ImagePipeline.shared.cachedImage(for: url, maxPixelSize: ImageSize.backdrop) == nil {
+            _ = await ImagePipeline.shared.image(for: url, maxPixelSize: ImageSize.backdrop)
+            guard !Task.isCancelled else { return }
+        }
+        shownBackdropURL = url
     }
 
     @ViewBuilder
@@ -102,41 +132,28 @@ struct HeroView: View {
 
     @ViewBuilder
     private var backdrop: some View {
-        AsyncImage(url: current?.backdropURL, transaction: Transaction(animation: .default)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .transition(.opacity)
-            default:
-                ZStack {
-                    Theme.bgElevated
-                    ProgressView()
-                }
-            }
+        ZStack {
+            Theme.bgElevated
+            RemoteImage(url: shownBackdropURL, maxPixelSize: ImageSize.backdrop)
+                .id(shownBackdropURL)
+                .transition(.opacity)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
+        .animation(.easeInOut(duration: 0.4), value: shownBackdropURL)
+        .task(id: current?.backdropURL) { await showBackdrop(current?.backdropURL) }
     }
 
     @ViewBuilder
     private func infoBlock(for item: MediaItem) -> some View {
         VStack(alignment: .leading, spacing: 20) {
             if let logoURL = item.logoURL {
-                AsyncImage(url: logoURL, transaction: Transaction(animation: .default)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 520, maxHeight: 200, alignment: .leading)
-                            .transition(.opacity)
-                    default:
-                        ProgressView()
-                            .frame(height: 120, alignment: .leading)
-                    }
+                RemoteImage(url: logoURL, maxPixelSize: ImageSize.logo, contentMode: .fit) {
+                    Color.clear
+                        .frame(height: 120)
                 }
+                .frame(maxWidth: 520, maxHeight: 200, alignment: .leading)
+                .id(logoURL)
             } else {
                 Text(item.title)
                     .font(Theme.Font.heroTitle)
@@ -162,7 +179,7 @@ struct HeroView: View {
     @ViewBuilder
     private func ctaRow(for item: MediaItem) -> some View {
         HStack(spacing: 24) {
-            Button(action: {}) {
+            Button(action: { onPlay(index) }) {
                 HStack(spacing: 10) {
                     Image(systemName: "play.fill")
                     Text("Reproduzir")
@@ -172,8 +189,8 @@ struct HeroView: View {
             .prefersDefaultFocus(in: heroFocus)
             .heroControlFocus(focusedControl, .play)
 
-            circleButton(symbol: "plus", control: .add, action: {})
-            circleButton(symbol: "info.circle", control: .info, action: {})
+            circleButton(symbol: isInMyList(item) ? "checkmark" : "plus", control: .add, action: { onToggleMyList(item) })
+            circleButton(symbol: "info.circle", control: .info, action: { onInfo(index) })
             circleButton(symbol: "chevron.right", control: .next, action: advance)
         }
         .focusScope(heroFocus)

@@ -60,3 +60,12 @@ enum MenuSection: String, Hashable, Identifiable {
         .claro, .paramount, .globoplay, .discovery, .hulu
     ]
 }
+
+extension MenuSection {
+    var isRestorable: Bool { self != .search }
+
+    static func restored(from raw: String?) -> MenuSection {
+        guard let raw, let section = MenuSection(rawValue: raw), section.isRestorable else { return .filmes }
+        return section
+    }
+}

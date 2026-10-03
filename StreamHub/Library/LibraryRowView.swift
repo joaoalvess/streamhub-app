@@ -44,6 +44,7 @@ struct LibraryCardView: View {
 private struct LibraryCardLabel: View {
     let entry: LibraryEntry
     @Environment(\.isFocused) private var isFocused
+    @State private var failedPosterURL: URL?
 
     var body: some View {
         poster
@@ -57,27 +58,17 @@ private struct LibraryCardLabel: View {
     }
 
     private var poster: some View {
-        AsyncImage(url: entry.posterURL, transaction: Transaction(animation: .default)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .transition(.opacity)
-            case .failure:
+        RemoteImage(url: entry.posterURL, maxPixelSize: ImageSize.poster) {
+            if entry.posterURL == nil || entry.posterURL == failedPosterURL {
                 placeholder
-            case .empty:
-                if entry.posterURL == nil {
-                    placeholder
-                } else {
-                    ZStack {
-                        Theme.bgElevated
-                        ProgressView()
-                    }
-                }
-            @unknown default:
-                placeholder
+            } else {
+                Theme.bgElevated
             }
+        }
+        .task(id: entry.posterURL) {
+            guard let url = entry.posterURL,
+                  await ImagePipeline.shared.image(for: url, maxPixelSize: ImageSize.poster) == nil else { return }
+            failedPosterURL = url
         }
     }
 

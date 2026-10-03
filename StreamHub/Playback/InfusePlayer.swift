@@ -85,10 +85,10 @@ nonisolated enum InfuseCallback: Equatable {
 enum InfuseLauncher {
     private static let probe = URL(string: "infuse://")
 
-    static let isInstalled: Bool = {
+    static var isInstalled: Bool {
         guard let probe else { return false }
         return UIApplication.shared.canOpenURL(probe)
-    }()
+    }
 
     static func open(_ url: URL) async -> Bool {
         await UIApplication.shared.open(url)

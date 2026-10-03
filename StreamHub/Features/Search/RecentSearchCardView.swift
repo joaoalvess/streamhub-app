@@ -26,16 +26,8 @@ struct RecentSearchCardView: View {
     }
 
     private var poster: some View {
-        AsyncImage(url: item.posterURL, transaction: Transaction(animation: .default)) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .transition(.opacity)
-            default:
-                Theme.bgElevated
-            }
+        RemoteImage(url: item.posterURL, maxPixelSize: ImageSize.poster) {
+            Theme.bgElevated
         }
         .frame(width: 92, height: 138)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))

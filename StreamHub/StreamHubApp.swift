@@ -14,6 +14,7 @@ struct StreamHubApp: App {
     @State private var metaProvider: MetaProvider
     @State private var profileStore: ProfileStore
     @State private var recentSearches: RecentSearchesStore
+    @State private var myList: MyListStore
 
     init() {
         SecretsStore.shared.bootstrapIfNeeded()
@@ -24,6 +25,7 @@ struct StreamHubApp: App {
         _metaProvider = State(initialValue: MetaProvider())
         _profileStore = State(initialValue: ProfileStore())
         _recentSearches = State(initialValue: RecentSearchesStore())
+        _myList = State(initialValue: MyListStore())
     }
 
     var body: some Scene {
@@ -34,6 +36,7 @@ struct StreamHubApp: App {
                 .environment(coordinator.progressStore)
                 .environment(metaProvider)
                 .environment(recentSearches)
+                .environment(myList)
         }
     }
 }

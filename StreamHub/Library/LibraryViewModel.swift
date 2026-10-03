@@ -67,12 +67,7 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
     }
 
     var startSeconds: Int? {
-        guard let resumePositionSeconds, resumePositionSeconds >= 30 else { return nil }
-        if let runtimeMinutes, runtimeMinutes > 0,
-           Double(resumePositionSeconds) > Double(runtimeMinutes * 60) * 0.95 {
-            return nil
-        }
-        return resumePositionSeconds
+        ResumePolicy.startSeconds(position: resumePositionSeconds, runtimeMinutes: runtimeMinutes)
     }
 
     func sessionMetadata() -> NativeSessionMetadata {
@@ -111,7 +106,7 @@ final class LibraryViewModel {
 
     private let api: JellyfinAPI
     private let baseProvider: () -> URL?
-    private var hasLoaded = false
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
 
     init(
         api: JellyfinAPI = JellyfinAPI(),
@@ -122,18 +117,27 @@ final class LibraryViewModel {
     }
 
     func loadIfNeeded() async {
-        guard !hasLoaded else { return }
-        hasLoaded = true
+        guard phase != .loaded else { return }
         await load()
     }
 
     func load() async {
+        if loadTask == nil {
+            loadTask = Task { await performLoad() }
+        }
+        if let loadTask {
+            await loadTask.value
+        }
+    }
+
+    private func performLoad() async {
+        defer { loadTask = nil }
         phase = .loading
         let api = self.api
         let base = baseProvider()
+        async let resumeItems = (try? await api.resumeItems(limit: 20)) ?? []
+        async let latestItems = (try? await api.latestItems(limit: 30)) ?? []
         do {
-            let resumeTask = Task { (try? await api.resumeItems(limit: 20)) ?? [] }
-            let latestTask = Task { (try? await api.latestItems(limit: 30)) ?? [] }
             let views = try await api.userViews()
             var viewRows: [(Int, LibraryRow)] = []
             await withTaskGroup(of: (Int, LibraryRow?).self) { group in
@@ -156,8 +160,10 @@ final class LibraryViewModel {
                     }
                 }
             }
+            let resumed = await resumeItems
+            let latest = await latestItems
             var loaded: [LibraryRow] = []
-            let resumeEntries = await resumeTask.value.map { LibraryEntry(item: $0, base: base) }
+            let resumeEntries = resumed.map { LibraryEntry(item: $0, base: base) }
             if !resumeEntries.isEmpty {
                 loaded.append(LibraryRow(
                     id: Self.resumeRowId,
@@ -166,7 +172,7 @@ final class LibraryViewModel {
                     entries: resumeEntries
                 ))
             }
-            let latestEntries = Self.dedupedByTitle(await latestTask.value.map { LibraryEntry(item: $0, base: base) })
+            let latestEntries = Self.dedupedByTitle(latest.map { LibraryEntry(item: $0, base: base) })
             if !latestEntries.isEmpty {
                 loaded.append(LibraryRow(
                     id: "latest",
@@ -179,10 +185,6 @@ final class LibraryViewModel {
             rows = loaded
             phase = .loaded
         } catch {
-            if Self.isCancellation(error) {
-                hasLoaded = false
-                return
-            }
             phase = .failed(Self.message(for: error))
         }
     }

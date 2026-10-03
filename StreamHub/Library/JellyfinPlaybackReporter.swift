@@ -26,7 +26,7 @@ final class JellyfinPlaybackReporter {
                 _ = try? await api.report(event, body: body)
             },
             positionProvider: { [weak coordinator] in
-                coordinator?.nativePositionSeconds
+                coordinator?.nativePositionSeconds ?? coordinator?.lastEndedNativePosition
             }
         )
     }

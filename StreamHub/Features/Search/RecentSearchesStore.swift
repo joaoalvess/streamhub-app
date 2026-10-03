@@ -46,10 +46,31 @@ final class RecentSearchesStore {
         persist()
     }
 
+    func remove(contentId: String) {
+        entries.removeAll { $0.contentId == contentId }
+        persist()
+    }
+
+    func clear() {
+        entries = []
+        persist()
+    }
+
     func setActiveProfile(_ id: UUID?) {
         guard id != activeProfileID else { return }
         activeProfileID = id
         entries = Self.load(key: Self.entriesKey(for: id), defaults: defaults)
+    }
+
+    func adoptLegacyDataIfNeeded(for profileID: UUID) {
+        let targetKey = Self.entriesKey(for: profileID)
+        guard defaults.data(forKey: targetKey) == nil,
+              let legacy = defaults.data(forKey: Self.baseKey) else { return }
+        defaults.set(legacy, forKey: targetKey)
+        defaults.removeObject(forKey: Self.baseKey)
+        if activeProfileID == profileID {
+            entries = Self.load(key: targetKey, defaults: defaults)
+        }
     }
 
     func removeData(for profileID: UUID) {
@@ -85,6 +106,7 @@ final class RecentSearchesStore {
 nonisolated extension MediaItem {
     init(recent entry: RecentSearchEntry) {
         self.init(
+            id: Self.stableID(for: "recent:\(entry.contentId)"),
             contentId: entry.contentId,
             imdbId: entry.imdbId,
             title: entry.title,

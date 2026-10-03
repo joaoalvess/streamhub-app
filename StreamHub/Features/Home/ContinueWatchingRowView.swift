@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContinueWatchingRowView: View {
     let entries: [ResumeEntry]
+    var onRemove: (String) -> Void = { _ in }
     @Environment(DetailRouter.self) private var router: DetailRouter?
 
     private struct IndexedItem: Identifiable {
@@ -11,9 +12,8 @@ struct ContinueWatchingRowView: View {
     }
 
     var body: some View {
-        let items = entries.map(MediaItem.init(entry:))
-        let indexed = entries.indices.map {
-            IndexedItem(id: entries[$0].contentId, index: $0, item: items[$0])
+        let indexed = entries.enumerated().map { index, entry in
+            IndexedItem(id: entry.contentId, index: index, item: MediaItem(entry: entry))
         }
         VStack(alignment: .leading, spacing: Theme.Metrics.titleGap) {
             Text("Continue assistindo")
@@ -26,6 +26,11 @@ struct ContinueWatchingRowView: View {
                     ForEach(indexed) { entry in
                         ContinueWatchingCardView(item: entry.item) {
                             open(at: entry.index)
+                        }
+                        .contextMenu {
+                            Button("Remover de Continuar assistindo", role: .destructive) {
+                                onRemove(entry.id)
+                            }
                         }
                     }
                 }
@@ -64,6 +69,7 @@ nonisolated extension MediaItem {
             episodeLabel = entry.remainingLabel
         }
         self.init(
+            id: Self.stableID(for: "resume:\(entry.contentId)"),
             contentId: entry.metaId ?? entry.contentId,
             imdbId: entry.imdbId,
             title: entry.title,

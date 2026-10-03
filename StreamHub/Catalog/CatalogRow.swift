@@ -24,6 +24,8 @@ final class CatalogRow: Identifiable {
     private var reachedEnd = false
     private var skip: Int
     private var isFetching = false
+    private var fetchFailed = false
+    private var lastAppearedIndex = 0
 
     init(api: MetadataAPI, type: String, id: String,
          title: String, style: MediaRow.Style, firstPage: [MetaPreview],
@@ -40,7 +42,6 @@ final class CatalogRow: Identifiable {
         self.loaded = items
         self.skip = firstPage.count
         self.revealed = min(Self.step, items.count)
-        if !isTopRanked { refillBufferIfNeeded() }
     }
 
     init(staticTitle title: String, style: MediaRow.Style, items: [MediaItem]) {
@@ -79,6 +80,12 @@ final class CatalogRow: Identifiable {
 
     func onCardAppear(_ index: Int) {
         guard !isTopRanked else { return }
+        lastAppearedIndex = index
+        fetchFailed = false
+        revealIfNeeded(near: index)
+    }
+
+    private func revealIfNeeded(near index: Int) {
         guard index >= displayCount - Self.prefetchThreshold else { return }
         if reachedEnd && revealed >= loaded.count {
             extraLoops += 1
@@ -89,22 +96,27 @@ final class CatalogRow: Identifiable {
     }
 
     private func refillBufferIfNeeded() {
-        guard !reachedEnd, !isFetching, loaded.count - revealed < Self.bufferWatermark else { return }
+        guard !reachedEnd, !isFetching, !fetchFailed, loaded.count - revealed < Self.bufferWatermark else { return }
         isFetching = true
         Task { await fetchNextPage() }
     }
 
     private func fetchNextPage() async {
-        let page = (try? await api.catalog(type: type, id: catalogId, skip: skip)) ?? []
-        if page.isEmpty {
-            reachedEnd = true
-        } else {
-            loaded.append(contentsOf: page.map {
-                MediaItem(preview: $0, catalogType: type, catalogId: catalogId, service: service)
-            })
-            skip += page.count
+        do {
+            let page = try await api.catalog(type: type, id: catalogId, skip: skip)
+            if page.isEmpty {
+                reachedEnd = true
+            } else {
+                loaded.append(contentsOf: page.map {
+                    MediaItem(preview: $0, catalogType: type, catalogId: catalogId, service: service)
+                })
+                skip += page.count
+            }
+            isFetching = false
+            revealIfNeeded(near: lastAppearedIndex)
+        } catch {
+            fetchFailed = true
+            isFetching = false
         }
-        isFetching = false
-        refillBufferIfNeeded()
     }
 }

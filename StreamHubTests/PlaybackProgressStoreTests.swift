@@ -390,4 +390,124 @@ struct PlaybackProgressStoreTests {
         store.setActiveProfile(owner)
         #expect(store.position(for: "tt0111161") == 845)
     }
+
+    @Test func removeDiscardsPendingSessionSoLateCallbackCannotRestoreEntry() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+        store.remove(contentId: "tt0111161")
+
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 845)
+        #expect(store.entries.isEmpty)
+
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        reloaded.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 845)
+        #expect(reloaded.entries.isEmpty)
+    }
+
+    @Test func removeKeepsPendingSessionsOfOtherProfiles() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        let owner = UUID()
+        let other = UUID()
+
+        store.setActiveProfile(owner)
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+
+        store.setActiveProfile(other)
+        store.upsert(entry(position: 300))
+        store.remove(contentId: "tt0111161")
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 845)
+        #expect(store.entries.isEmpty)
+
+        store.setActiveProfile(owner)
+        #expect(store.position(for: "tt0111161") == 845)
+    }
+
+    @Test func toggleWatchedMarksThenUnmarks() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.toggleWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1")
+        #expect(store.isWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1"))
+
+        store.toggleWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1")
+        #expect(!store.isWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1"))
+        #expect(store.watchedVideoIds(seriesId: "tt0903747").isEmpty)
+    }
+
+    @Test func unmarkWatchedKeepsOtherEpisodesAndPersists() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        store.markWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1")
+        store.markWatched(seriesId: "tt0903747", videoId: "tt0903747:1:2")
+        store.unmarkWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1")
+        #expect(store.watchedVideoIds(seriesId: "tt0903747") == ["tt0903747:1:2"])
+
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        #expect(reloaded.watchedVideoIds(seriesId: "tt0903747") == ["tt0903747:1:2"])
+    }
+
+    @Test func markingResumeEpisodeWatchedAdvancesEntryToNext() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(position: 600))
+        let next = NextEpisodeRef(
+            videoId: "tt0903747:1:2",
+            season: 1,
+            episode: 2,
+            title: "Cat's in the Bag...",
+            runtimeMinutes: 48
+        )
+        store.toggleWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1", next: next)
+
+        let entry = try #require(store.entries.first)
+        #expect(store.entries.count == 1)
+        #expect(entry.videoId == "tt0903747:1:2")
+        #expect(entry.positionSeconds == 0)
+        #expect(entry.runtimeMinutes == 48)
+        #expect(entry.episodeCode == "T1E2")
+        #expect(entry.metaId == "mal:81")
+        #expect(store.isWatched(seriesId: "tt0903747", videoId: "tt0903747:1:1"))
+    }
+
+    @Test func markingResumeEpisodeWatchedWithoutNextRemovesEntry() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(videoId: "tt0903747:5:16", season: 5, episode: 16, position: 600))
+        store.markEpisodeWatched(seriesId: "tt0903747", videoId: "tt0903747:5:16")
+
+        #expect(store.entries.isEmpty)
+        #expect(store.isWatched(seriesId: "tt0903747", videoId: "tt0903747:5:16"))
+    }
+
+    @Test func markingOtherEpisodeWatchedKeepsResumeEntry() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(position: 600))
+        store.toggleWatched(seriesId: "tt0903747", videoId: "tt0903747:1:3")
+
+        let entry = try #require(store.entries.first)
+        #expect(entry.videoId == "tt0903747:1:1")
+        #expect(entry.positionSeconds == 600)
+        #expect(store.isWatched(seriesId: "tt0903747", videoId: "tt0903747:1:3"))
+    }
+
+    @Test func isCompletedPrefersRealDuration() {
+        #expect(PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: 2_800, runtimeMinutes: 100))
+        #expect(!PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: 6_000, runtimeMinutes: 45))
+    }
+
+    @Test func isCompletedFallsBackToRuntimeWhenDurationIsMissing() {
+        #expect(PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: nil, runtimeMinutes: 45))
+        #expect(PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: 0, runtimeMinutes: 45))
+        #expect(!PlaybackProgressStore.isCompleted(position: 1_000, durationSeconds: nil, runtimeMinutes: 45))
+        #expect(!PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: nil, runtimeMinutes: nil))
+        #expect(!PlaybackProgressStore.isCompleted(position: 2_700, durationSeconds: 0, runtimeMinutes: 0))
+    }
+
+    @Test func applyCallbackUsesRealDurationWhenProvided() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry(runtimeMinutes: 142))
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 1_000, duration: 1_050)
+        #expect(store.entries.isEmpty)
+
+        store.registerSession(videoURL: "https://cdn/b.mkv", entry: entry(runtimeMinutes: 45))
+        store.applyCallback(lastPlayedURL: "https://cdn/b.mkv", position: 2_700, duration: 6_000)
+        #expect(store.position(for: "tt0111161") == 2_700)
+    }
 }

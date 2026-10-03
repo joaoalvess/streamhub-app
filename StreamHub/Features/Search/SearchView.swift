@@ -48,7 +48,9 @@ struct SearchView: View {
         if let recentsStore, !recentsStore.entries.isEmpty {
             RecentSearchesRowView(
                 items: recentsStore.entries.map(MediaItem.init(recent:)),
-                onOpen: registerRecent
+                onOpen: registerRecent,
+                onRemove: removeRecent,
+                onClear: clearRecents
             )
         }
         if let row = model.exploreRow {
@@ -126,5 +128,14 @@ struct SearchView: View {
 
     private func registerRecent(_ item: MediaItem) {
         recentsStore?.record(item)
+    }
+
+    private func removeRecent(_ item: MediaItem) {
+        guard let key = item.contentId ?? item.imdbId else { return }
+        recentsStore?.remove(contentId: key)
+    }
+
+    private func clearRecents() {
+        recentsStore?.clear()
     }
 }

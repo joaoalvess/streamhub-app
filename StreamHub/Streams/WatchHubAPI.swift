@@ -6,7 +6,7 @@ nonisolated struct WatchHubStream: Decodable, Sendable {
 }
 
 nonisolated struct WatchHubAPI {
-    private struct Response: Decodable {
+    nonisolated private struct Response: Decodable, Sendable {
         let streams: [WatchHubStream]
     }
 
@@ -22,10 +22,14 @@ nonisolated struct WatchHubAPI {
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
-        let (data, response) = try await session.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw StreamsAPIError.badStatus(http.statusCode)
+        do {
+            return try await HTTP.fetch(Response.self, for: request, session: session).streams
+        } catch let failure as HTTPFailure {
+            switch failure {
+            case .status(let code, _): throw StreamsAPIError.badStatus(code)
+            case .transport(let error): throw StreamsAPIError.transport(error)
+            case .decoding(let error): throw StreamsAPIError.decoding(error)
+            }
         }
-        return try JSONDecoder().decode(Response.self, from: data).streams
     }
 }
