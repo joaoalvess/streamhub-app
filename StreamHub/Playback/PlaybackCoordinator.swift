@@ -38,7 +38,7 @@ final class PlaybackCoordinator {
             case .rateLimited:
                 "Muitas buscas em sequência. Tente novamente em instantes."
             case .network:
-                "Servidor de streams inacessível. Verifique a conexão Tailscale."
+                "Não foi possível conectar ao servidor de streams. Verifique sua conexão e tente novamente."
             case .infuseNotInstalled:
                 "O Infuse não está instalado nesta Apple TV."
             case .openFailed:
@@ -63,6 +63,8 @@ final class PlaybackCoordinator {
     private(set) var nativeSession: NativePlaybackSession?
     private var nativePosition: Int?
     private var nativeDuration: Int?
+    private static let checkpointInterval = 15
+    private var lastCheckpoint: Int?
     var nativePositionSeconds: Int? { nativePosition }
     private(set) var lastEndedNativePosition: Int?
     let progressStore: PlaybackProgressStore
@@ -193,6 +195,7 @@ final class PlaybackCoordinator {
         }
         nativePosition = nil
         nativeDuration = nil
+        lastCheckpoint = nil
         lastEndedNativePosition = nil
         nativeSession = NativePlaybackSession(videoURL: videoURL, title: title, contentKey: contentKey, startSeconds: position, metadata: metadata)
         state = .idle
@@ -209,8 +212,19 @@ final class PlaybackCoordinator {
     }
 
     func updateNativePosition(_ seconds: Int) {
-        guard nativeSession != nil, seconds > 0 else { return }
+        guard let session = nativeSession, seconds > 0 else { return }
         nativePosition = seconds
+        guard let last = lastCheckpoint else {
+            lastCheckpoint = seconds
+            return
+        }
+        guard abs(seconds - last) >= Self.checkpointInterval else { return }
+        lastCheckpoint = seconds
+        progressStore.checkpoint(
+            videoURL: session.videoURL.absoluteString,
+            position: seconds,
+            duration: nativeDuration
+        )
     }
 
     func updateNativeDuration(_ seconds: Int) {
@@ -230,6 +244,7 @@ final class PlaybackCoordinator {
         lastEndedNativePosition = nativePosition
         nativePosition = nil
         nativeDuration = nil
+        lastCheckpoint = nil
     }
 
     private func beginPlay() -> Int {

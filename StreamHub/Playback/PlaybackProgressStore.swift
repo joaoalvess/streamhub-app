@@ -77,7 +77,7 @@ nonisolated struct ResumeEntry: Codable, Hashable {
     var remainingLabel: String? {
         guard let runtimeMinutes, runtimeMinutes > 0, positionSeconds > 0 else { return nil }
         let remaining = max(0, runtimeMinutes - positionSeconds / 60)
-        return "Restam \(remaining) min"
+        return DurationFormat.remaining(minutes: remaining)
     }
 }
 
@@ -119,6 +119,7 @@ final class PlaybackProgressStore {
 
     private static let legacyEntriesKey = "playback.resume.v1"
     private static let legacyWatchedKey = "playback.watched.v1"
+    private static let legacyWatchedMoviesKey = "playback.watchedMovies.v1"
     private static let sessionsKey = "playback.sessions.v1"
 
     private static func entriesKey(for id: UUID?) -> String {
@@ -129,21 +130,28 @@ final class PlaybackProgressStore {
         guard let id else { return legacyWatchedKey }
         return "\(legacyWatchedKey).\(id.uuidString)"
     }
+    private static func watchedMoviesKey(for id: UUID?) -> String {
+        guard let id else { return legacyWatchedMoviesKey }
+        return "\(legacyWatchedMoviesKey).\(id.uuidString)"
+    }
     private static let maxEntries = 20
     private static let maxSessions = 5
     private static let maxWatchedSeries = 40
+    private static let maxWatchedMovies = 500
     private static let sessionTTL: TimeInterval = 86_400
 
     private(set) var entries: [ResumeEntry] = []
     private(set) var activeProfileID: UUID?
     private var sessions: [String: SessionRecord] = [:]
     private var watched: [String: WatchedRecord] = [:]
+    private var watchedMovies: [String: Date] = [:]
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         entries = Self.load([ResumeEntry].self, key: Self.entriesKey(for: nil), defaults: defaults) ?? []
         watched = Self.load([String: WatchedRecord].self, key: Self.watchedKey(for: nil), defaults: defaults) ?? [:]
+        watchedMovies = Self.load([String: Date].self, key: Self.watchedMoviesKey(for: nil), defaults: defaults) ?? [:]
         let stored = Self.load([String: SessionRecord].self, key: Self.sessionsKey, defaults: defaults) ?? [:]
         sessions = stored.filter { Date().timeIntervalSince($0.value.startedAt) < Self.sessionTTL }
     }
@@ -164,12 +172,38 @@ final class PlaybackProgressStore {
         return Double(position) / Double(total) >= ResumePolicy.completionRatio
     }
 
+    nonisolated static func progressBadge(kind: MediaItem.Kind, entry: ResumeEntry?, movieWatched: Bool) -> ProgressBadge {
+        switch kind {
+        case .movie:
+            if let entry, entry.positionSeconds > 0, let progress = entry.progress,
+               progress < ResumePolicy.completionRatio {
+                return .inProgress(max(progress, 0.03))
+            }
+            return movieWatched ? .watched : .none
+        case .series, .anime:
+            guard let entry, entry.videoId != nil, entry.positionSeconds > 0 else { return .none }
+            return .inProgress(max(entry.progress ?? 0, 0.03))
+        }
+    }
+
     func position(for contentId: String) -> Int? {
         entry(forSeries: contentId)?.positionSeconds
     }
 
     func entry(forSeries seriesId: String) -> ResumeEntry? {
         entries.first { $0.contentId == seriesId }
+    }
+
+    func progressBadge(for item: MediaItem) -> ProgressBadge {
+        Self.progressBadge(kind: item.kind, entry: resumeEntry(for: item), movieWatched: isMovieWatched(item))
+    }
+
+    private func resumeEntry(for item: MediaItem) -> ResumeEntry? {
+        if let key = Self.seriesKey(for: item), let found = entry(forSeries: key) {
+            return found
+        }
+        guard let contentId = item.contentId else { return nil }
+        return entry(forSeries: contentId)
     }
 
     func upsert(_ entry: ResumeEntry) {
@@ -219,6 +253,9 @@ final class PlaybackProgressStore {
         if completed, let context = record.episodeContext {
             markWatched(seriesId: context.seriesId, videoId: context.videoId, owner: owner)
         }
+        if completed, record.episodeContext == nil {
+            markMovieWatched(key: entry.contentId, owner: owner)
+        }
         let resolution = Self.callbackResolution(
             entry: entry,
             completed: completed,
@@ -241,6 +278,19 @@ final class PlaybackProgressStore {
         }
         apply(resolution, owner: owner)
         persistSessions()
+    }
+
+    func checkpoint(videoURL: String, position: Int, duration: Int? = nil) {
+        guard let record = sessions[videoURL], position > 0 else { return }
+        var entry = record.entry
+        guard !Self.isCompleted(
+            position: position,
+            durationSeconds: duration,
+            runtimeMinutes: entry.runtimeMinutes
+        ) else { return }
+        entry.positionSeconds = position
+        entry.updatedAt = Date()
+        apply(.upsert(entry), owner: record.profileID ?? activeProfileID)
     }
 
     private func apply(_ resolution: CallbackResolution, owner: UUID?) {
@@ -314,12 +364,32 @@ final class PlaybackProgressStore {
     }
 
     func markWatched(seriesId: String, videoId: String) {
-        watched = Self.marking(watched, seriesId: seriesId, videoId: videoId)
+        watched = Self.marking(watched, seriesId: seriesId, videoIds: [videoId])
         persistWatched()
     }
 
     func markEpisodeWatched(seriesId: String, videoId: String, next: NextEpisodeRef? = nil) {
         markWatched(seriesId: seriesId, videoId: videoId)
+        resolveWatchedEntry(seriesId: seriesId, videoId: videoId, next: next)
+    }
+
+    func markSeasonWatched(seriesId: String, videoIds: [String], next: NextEpisodeRef?) {
+        guard !videoIds.isEmpty else { return }
+        watched = Self.marking(watched, seriesId: seriesId, videoIds: videoIds)
+        persistWatched()
+        guard let videoId = entry(forSeries: seriesId)?.videoId, videoIds.contains(videoId) else { return }
+        resolveWatchedEntry(seriesId: seriesId, videoId: videoId, next: next)
+    }
+
+    func unmarkSeasonWatched(seriesId: String, videoIds: [String]) {
+        guard var record = watched[seriesId], !record.videoIds.isDisjoint(with: videoIds) else { return }
+        record.videoIds.subtract(videoIds)
+        record.updatedAt = Date()
+        watched[seriesId] = record.videoIds.isEmpty ? nil : record
+        persistWatched()
+    }
+
+    private func resolveWatchedEntry(seriesId: String, videoId: String, next: NextEpisodeRef?) {
         guard let current = entries.first(where: { $0.contentId == seriesId && $0.videoId == videoId }) else { return }
         let context = EpisodeSessionContext(
             seriesId: seriesId,
@@ -359,23 +429,78 @@ final class PlaybackProgressStore {
         }
         let key = Self.watchedKey(for: owner)
         let stored = Self.load([String: WatchedRecord].self, key: key, defaults: defaults) ?? [:]
-        Self.save(Self.marking(stored, seriesId: seriesId, videoId: videoId), key: key, defaults: defaults)
+        Self.save(Self.marking(stored, seriesId: seriesId, videoIds: [videoId]), key: key, defaults: defaults)
     }
 
     private static func marking(
         _ map: [String: WatchedRecord],
         seriesId: String,
-        videoId: String
+        videoIds: [String]
     ) -> [String: WatchedRecord] {
         var result = map
         var record = result[seriesId] ?? WatchedRecord(videoIds: [], updatedAt: Date())
-        record.videoIds.insert(videoId)
+        record.videoIds.formUnion(videoIds)
         record.updatedAt = Date()
         result[seriesId] = record
         if result.count > maxWatchedSeries {
             let newest = result
                 .sorted { $0.value.updatedAt > $1.value.updatedAt }
                 .prefix(maxWatchedSeries)
+            result = Dictionary(uniqueKeysWithValues: Array(newest))
+        }
+        return result
+    }
+
+    func isMovieWatched(_ item: MediaItem) -> Bool {
+        Self.movieKeys(for: item).contains { watchedMovies[$0] != nil }
+    }
+
+    func markMovieWatched(_ item: MediaItem) {
+        guard let key = item.contentId ?? item.imdbId else { return }
+        let resumeContentId = resumeEntry(for: item)?.contentId
+        markMovieWatched(key: key, owner: activeProfileID)
+        remove(contentId: resumeContentId ?? key)
+    }
+
+    func unmarkMovieWatched(_ item: MediaItem) {
+        let keys = Self.movieKeys(for: item)
+        guard keys.contains(where: { watchedMovies[$0] != nil }) else { return }
+        watchedMovies = watchedMovies.filter { !keys.contains($0.key) }
+        persistWatchedMovies()
+    }
+
+    @discardableResult
+    func toggleMovieWatched(_ item: MediaItem) -> Bool {
+        if isMovieWatched(item) {
+            unmarkMovieWatched(item)
+        } else {
+            markMovieWatched(item)
+        }
+        return isMovieWatched(item)
+    }
+
+    private func markMovieWatched(key: String, owner: UUID?) {
+        if owner == activeProfileID {
+            watchedMovies = Self.markingMovie(watchedMovies, key: key)
+            persistWatchedMovies()
+            return
+        }
+        let storageKey = Self.watchedMoviesKey(for: owner)
+        let stored = Self.load([String: Date].self, key: storageKey, defaults: defaults) ?? [:]
+        Self.save(Self.markingMovie(stored, key: key), key: storageKey, defaults: defaults)
+    }
+
+    private static func movieKeys(for item: MediaItem) -> [String] {
+        [item.contentId, item.imdbId].compactMap { $0 }
+    }
+
+    private static func markingMovie(_ map: [String: Date], key: String) -> [String: Date] {
+        var result = map
+        result[key] = Date()
+        if result.count > maxWatchedMovies {
+            let newest = result
+                .sorted { $0.value > $1.value }
+                .prefix(maxWatchedMovies)
             result = Dictionary(uniqueKeysWithValues: Array(newest))
         }
         return result
@@ -399,19 +524,25 @@ final class PlaybackProgressStore {
         activeProfileID = id
         entries = Self.load([ResumeEntry].self, key: Self.entriesKey(for: id), defaults: defaults) ?? []
         watched = Self.load([String: WatchedRecord].self, key: Self.watchedKey(for: id), defaults: defaults) ?? [:]
+        watchedMovies = Self.load([String: Date].self, key: Self.watchedMoviesKey(for: id), defaults: defaults) ?? [:]
     }
 
     func adoptLegacyDataIfNeeded(for profileID: UUID) {
         let entriesKey = Self.entriesKey(for: profileID)
         let watchedKey = Self.watchedKey(for: profileID)
+        let watchedMoviesKey = Self.watchedMoviesKey(for: profileID)
         let adoptedEntries = adoptLegacyValue(from: Self.legacyEntriesKey, to: entriesKey)
         let adoptedWatched = adoptLegacyValue(from: Self.legacyWatchedKey, to: watchedKey)
+        let adoptedWatchedMovies = adoptLegacyValue(from: Self.legacyWatchedMoviesKey, to: watchedMoviesKey)
         guard activeProfileID == profileID else { return }
         if adoptedEntries {
             entries = Self.load([ResumeEntry].self, key: entriesKey, defaults: defaults) ?? []
         }
         if adoptedWatched {
             watched = Self.load([String: WatchedRecord].self, key: watchedKey, defaults: defaults) ?? [:]
+        }
+        if adoptedWatchedMovies {
+            watchedMovies = Self.load([String: Date].self, key: watchedMoviesKey, defaults: defaults) ?? [:]
         }
     }
 
@@ -426,11 +557,13 @@ final class PlaybackProgressStore {
     func removeData(for profileID: UUID) {
         defaults.removeObject(forKey: Self.entriesKey(for: profileID))
         defaults.removeObject(forKey: Self.watchedKey(for: profileID))
+        defaults.removeObject(forKey: Self.watchedMoviesKey(for: profileID))
         sessions = sessions.filter { $0.value.profileID != profileID }
         persistSessions()
         if activeProfileID == profileID {
             entries = []
             watched = [:]
+            watchedMovies = [:]
         }
     }
 
@@ -450,6 +583,10 @@ final class PlaybackProgressStore {
 
     private func persistWatched() {
         Self.save(watched, key: Self.watchedKey(for: activeProfileID), defaults: defaults)
+    }
+
+    private func persistWatchedMovies() {
+        Self.save(watchedMovies, key: Self.watchedMoviesKey(for: activeProfileID), defaults: defaults)
     }
 
     private static func upserted(_ entry: ResumeEntry, into entries: [ResumeEntry]) -> [ResumeEntry] {

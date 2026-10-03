@@ -120,6 +120,9 @@ struct PlaybackProgressStoreTests {
 
         let unknownRuntime = entry(runtimeMinutes: nil, position: 3_000)
         #expect(unknownRuntime.progress == nil)
+
+        #expect(entry(runtimeMinutes: 142, position: 600).remainingLabel == "Restam 2 h 12 min")
+        #expect(entry(runtimeMinutes: 130, position: 600).remainingLabel == "Restam 2 h")
     }
 
     @Test func setActiveProfileIsolatesEntriesPerProfile() throws {
@@ -509,5 +512,313 @@ struct PlaybackProgressStoreTests {
         store.registerSession(videoURL: "https://cdn/b.mkv", entry: entry(runtimeMinutes: 45))
         store.applyCallback(lastPlayedURL: "https://cdn/b.mkv", position: 2_700, duration: 6_000)
         #expect(store.position(for: "tt0111161") == 2_700)
+    }
+
+    private func movie(contentId: String? = "tt0111161", imdbId: String? = "tt0111161") -> MediaItem {
+        MediaItem(
+            contentId: contentId,
+            imdbId: imdbId,
+            title: "Um Sonho de Liberdade",
+            kind: .movie,
+            genres: ["Drama"],
+            posterURL: nil,
+            backdropURL: nil,
+            synopsis: "",
+            year: 1994
+        )
+    }
+
+    @Test func checkpointUpdatesPositionWithoutConsumingSession() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 600)
+        #expect(store.position(for: "tt0111161") == 600)
+
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 845)
+        #expect(store.position(for: "tt0111161") == 845)
+    }
+
+    @Test func checkpointPersistsForRestart() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 600)
+
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        #expect(reloaded.position(for: "tt0111161") == 600)
+        reloaded.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 900)
+        #expect(reloaded.position(for: "tt0111161") == 900)
+    }
+
+    @Test func checkpointIgnoresUnknownURLAndZeroPosition() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+        store.checkpoint(videoURL: "https://cdn/other.mkv", position: 600)
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 0)
+
+        #expect(store.position(for: "tt0111161") == 0)
+    }
+
+    @Test func checkpointSkipsCompletedPosition() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry(runtimeMinutes: 100))
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 5_700)
+        #expect(store.position(for: "tt0111161") == 0)
+
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 5_700, duration: 7_200)
+        #expect(store.position(for: "tt0111161") == 5_700)
+    }
+
+    @Test func checkpointKeepsPreviousEntryForDiscard() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(position: 600))
+        store.registerSession(
+            videoURL: "https://cdn/e2.mkv",
+            entry: episodeEntry(videoId: "tt0903747:1:2", episode: 2),
+            episodeContext: episodeContext(videoId: "tt0903747:1:2", episode: 2)
+        )
+        store.checkpoint(videoURL: "https://cdn/e2.mkv", position: 300)
+        let checkpointed = try #require(store.entries.first)
+        #expect(checkpointed.videoId == "tt0903747:1:2")
+        #expect(checkpointed.positionSeconds == 300)
+
+        store.discardSession(videoURL: "https://cdn/e2.mkv")
+        let restored = try #require(store.entries.first)
+        #expect(restored.videoId == "tt0903747:1:1")
+        #expect(restored.positionSeconds == 600)
+    }
+
+    @Test func checkpointRoutesToOwningProfile() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        let owner = UUID()
+        let other = UUID()
+
+        store.setActiveProfile(owner)
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+
+        store.setActiveProfile(other)
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 600)
+        #expect(store.entries.isEmpty)
+
+        store.setActiveProfile(owner)
+        #expect(store.position(for: "tt0111161") == 600)
+    }
+
+    @Test func checkpointAfterRemovalDoesNotResurrectEntry() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry())
+        store.remove(contentId: "tt0111161")
+        store.checkpoint(videoURL: "https://cdn/a.mkv", position: 600)
+
+        #expect(store.entries.isEmpty)
+    }
+
+    @Test func completedMovieCallbackMarksMovieWatched() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry(runtimeMinutes: 100))
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 5_700)
+
+        #expect(store.entries.isEmpty)
+        #expect(store.isMovieWatched(movie()))
+        #expect(store.isMovieWatched(movie(contentId: "tmdb:278", imdbId: "tt0111161")))
+        #expect(!store.isMovieWatched(movie(contentId: "tmdb:278", imdbId: nil)))
+    }
+
+    @Test func incompleteMovieCallbackDoesNotMarkWatched() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry(runtimeMinutes: 100))
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 3_000)
+
+        #expect(!store.isMovieWatched(movie()))
+    }
+
+    @Test func completedEpisodeCallbackDoesNotMarkMovieWatched() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.registerSession(
+            videoURL: "https://cdn/e1.mkv",
+            entry: episodeEntry(),
+            episodeContext: episodeContext()
+        )
+        store.applyCallback(lastPlayedURL: "https://cdn/e1.mkv", position: 2_700)
+
+        #expect(!store.isMovieWatched(movie(contentId: "tt0903747", imdbId: "tt0903747")))
+    }
+
+    @Test func completedMovieCallbackMarksWatchedForOwningProfile() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        let owner = UUID()
+        let other = UUID()
+
+        store.setActiveProfile(owner)
+        store.registerSession(videoURL: "https://cdn/a.mkv", entry: entry(runtimeMinutes: 100))
+
+        store.setActiveProfile(other)
+        store.applyCallback(lastPlayedURL: "https://cdn/a.mkv", position: 5_700)
+        #expect(!store.isMovieWatched(movie()))
+
+        store.setActiveProfile(owner)
+        #expect(store.isMovieWatched(movie()))
+    }
+
+    @Test func toggleMovieWatchedReturnsNewStateAndClearsResumeEntry() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(entry(position: 600))
+
+        #expect(store.toggleMovieWatched(movie()))
+        #expect(store.isMovieWatched(movie()))
+        #expect(store.entries.isEmpty)
+
+        #expect(!store.toggleMovieWatched(movie()))
+        #expect(!store.isMovieWatched(movie()))
+    }
+
+    @Test func markMovieWatchedRemovesResumeEntryFoundByImdbId() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(entry(contentId: "tt0111161", position: 600))
+        store.markMovieWatched(movie(contentId: "tmdb:278", imdbId: "tt0111161"))
+
+        #expect(store.entries.isEmpty)
+        #expect(store.isMovieWatched(movie(contentId: "tmdb:278", imdbId: nil)))
+    }
+
+    @Test func unmarkMovieWatchedClearsBothIdentities() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.markMovieWatched(movie(contentId: "tt0111161", imdbId: nil))
+        store.markMovieWatched(movie(contentId: "tmdb:278", imdbId: nil))
+        store.unmarkMovieWatched(movie(contentId: "tmdb:278", imdbId: "tt0111161"))
+
+        #expect(!store.isMovieWatched(movie(contentId: "tt0111161", imdbId: nil)))
+        #expect(!store.isMovieWatched(movie(contentId: "tmdb:278", imdbId: nil)))
+    }
+
+    @Test func watchedMoviesPersistAndAreIsolatedPerProfile() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        let first = UUID()
+        let second = UUID()
+
+        store.setActiveProfile(first)
+        store.markMovieWatched(movie())
+
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        reloaded.setActiveProfile(first)
+        #expect(reloaded.isMovieWatched(movie()))
+
+        reloaded.setActiveProfile(second)
+        #expect(!reloaded.isMovieWatched(movie()))
+
+        reloaded.setActiveProfile(first)
+        reloaded.removeData(for: first)
+        #expect(!reloaded.isMovieWatched(movie()))
+        reloaded.setActiveProfile(second)
+        reloaded.setActiveProfile(first)
+        #expect(!reloaded.isMovieWatched(movie()))
+    }
+
+    @Test func adoptLegacyDataMovesWatchedMoviesToProfile() throws {
+        let defaults = try makeDefaults()
+        let legacy = PlaybackProgressStore(defaults: defaults)
+        legacy.markMovieWatched(movie())
+
+        let store = PlaybackProgressStore(defaults: defaults)
+        let profile = UUID()
+        store.setActiveProfile(profile)
+        store.adoptLegacyDataIfNeeded(for: profile)
+        #expect(store.isMovieWatched(movie()))
+
+        store.setActiveProfile(nil)
+        #expect(!store.isMovieWatched(movie()))
+    }
+
+    @Test func watchedMoviesCapPrunesOldest() throws {
+        let defaults = try makeDefaults()
+        var seeded: [String: Date] = [:]
+        for index in 0..<500 {
+            seeded["tt\(index)"] = Date(timeIntervalSinceReferenceDate: TimeInterval(index))
+        }
+        defaults.set(try JSONEncoder().encode(seeded), forKey: "playback.watchedMovies.v1")
+        let store = PlaybackProgressStore(defaults: defaults)
+        #expect(store.isMovieWatched(movie(contentId: "tt0", imdbId: nil)))
+
+        store.markMovieWatched(movie(contentId: "tt500", imdbId: nil))
+
+        #expect(store.isMovieWatched(movie(contentId: "tt500", imdbId: nil)))
+        #expect(store.isMovieWatched(movie(contentId: "tt1", imdbId: nil)))
+        #expect(!store.isMovieWatched(movie(contentId: "tt0", imdbId: nil)))
+    }
+
+    @Test func markSeasonWatchedMarksEveryEpisodeAndPersists() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        let season = ["tt0903747:1:1", "tt0903747:1:2", "tt0903747:1:3"]
+        store.markSeasonWatched(seriesId: "tt0903747", videoIds: season, next: nil)
+
+        #expect(store.watchedVideoIds(seriesId: "tt0903747") == Set(season))
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        #expect(reloaded.watchedVideoIds(seriesId: "tt0903747") == Set(season))
+    }
+
+    @Test func markSeasonWatchedAdvancesResumeEntryInsideSeason() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(videoId: "tt0903747:1:2", episode: 2, position: 600))
+        let next = NextEpisodeRef(
+            videoId: "tt0903747:2:1",
+            season: 2,
+            episode: 1,
+            title: "Seven Thirty-Seven",
+            runtimeMinutes: 47
+        )
+        store.markSeasonWatched(
+            seriesId: "tt0903747",
+            videoIds: ["tt0903747:1:1", "tt0903747:1:2", "tt0903747:1:3"],
+            next: next
+        )
+
+        let entry = try #require(store.entries.first)
+        #expect(store.entries.count == 1)
+        #expect(entry.videoId == "tt0903747:2:1")
+        #expect(entry.positionSeconds == 0)
+        #expect(entry.episodeCode == "T2E1")
+    }
+
+    @Test func markSeasonWatchedWithoutNextRemovesResumeEntryInsideSeason() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(videoId: "tt0903747:5:15", season: 5, episode: 15, position: 600))
+        store.markSeasonWatched(
+            seriesId: "tt0903747",
+            videoIds: ["tt0903747:5:15", "tt0903747:5:16"],
+            next: nil
+        )
+
+        #expect(store.entries.isEmpty)
+    }
+
+    @Test func markSeasonWatchedKeepsResumeEntryOutsideSeason() throws {
+        let store = PlaybackProgressStore(defaults: try makeDefaults())
+        store.upsert(episodeEntry(videoId: "tt0903747:2:3", season: 2, episode: 3, position: 600))
+        store.markSeasonWatched(
+            seriesId: "tt0903747",
+            videoIds: ["tt0903747:1:1", "tt0903747:1:2"],
+            next: nil
+        )
+
+        let entry = try #require(store.entries.first)
+        #expect(entry.videoId == "tt0903747:2:3")
+        #expect(entry.positionSeconds == 600)
+    }
+
+    @Test func unmarkSeasonWatchedKeepsOtherSeasons() throws {
+        let defaults = try makeDefaults()
+        let store = PlaybackProgressStore(defaults: defaults)
+        store.markSeasonWatched(seriesId: "tt0903747", videoIds: ["tt0903747:1:1", "tt0903747:1:2"], next: nil)
+        store.markWatched(seriesId: "tt0903747", videoId: "tt0903747:2:1")
+        store.unmarkSeasonWatched(seriesId: "tt0903747", videoIds: ["tt0903747:1:1", "tt0903747:1:2"])
+
+        #expect(store.watchedVideoIds(seriesId: "tt0903747") == ["tt0903747:2:1"])
+        let reloaded = PlaybackProgressStore(defaults: defaults)
+        #expect(reloaded.watchedVideoIds(seriesId: "tt0903747") == ["tt0903747:2:1"])
+
+        store.unmarkSeasonWatched(seriesId: "tt0903747", videoIds: ["tt0903747:2:1"])
+        #expect(store.watchedVideoIds(seriesId: "tt0903747").isEmpty)
     }
 }
