@@ -25,6 +25,7 @@ actor JellyfinSession {
     private let secrets: SecretsStore
     private let session: URLSession
     private var cached: JellyfinContext?
+    private var pending: Task<JellyfinContext, any Error>?
 
     init(secrets: SecretsStore = .shared, session: URLSession = .shared) {
         self.secrets = secrets
@@ -33,6 +34,25 @@ actor JellyfinSession {
 
     func context() async throws -> JellyfinContext {
         if let cached { return cached }
+        if let pending { return try await pending.value }
+        let task = Task { try await self.resolveContext() }
+        pending = task
+        let result = await task.result
+        if pending == task {
+            pending = nil
+        }
+        return try result.get()
+    }
+
+    func invalidate(ifToken token: String) {
+        let current = cached?.token ?? secrets.read(.jellyfinAccessToken)
+        guard current == token else { return }
+        cached = nil
+        secrets.remove(.jellyfinAccessToken)
+        secrets.remove(.jellyfinUserId)
+    }
+
+    private func resolveContext() async throws -> JellyfinContext {
         guard let base = secrets.jellyfinBase,
               let username = secrets.jellyfinUsername,
               let pw = secrets.jellyfinPw else {
@@ -46,12 +66,6 @@ actor JellyfinSession {
             return context
         }
         return try await login(base: base, username: username, pw: pw, deviceId: deviceId)
-    }
-
-    func invalidate() {
-        cached = nil
-        secrets.remove(.jellyfinAccessToken)
-        secrets.remove(.jellyfinUserId)
     }
 
     private func login(base: URL, username: String, pw: String, deviceId: String) async throws -> JellyfinContext {
@@ -71,26 +85,12 @@ actor JellyfinSession {
         } catch {
             throw JellyfinError.decoding(error)
         }
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw JellyfinError.transport(error)
-        }
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 {
-                throw JellyfinError.unauthorized
-            }
-            guard (200...299).contains(http.statusCode) else {
-                throw JellyfinError.badStatus(http.statusCode)
-            }
-        }
         let result: JellyfinAuthResult
         do {
-            result = try JSONDecoder().decode(JellyfinAuthResult.self, from: data)
-        } catch {
-            throw JellyfinError.decoding(error)
+            let (data, _) = try await HTTP.data(for: request, session: session)
+            result = try HTTP.decode(JellyfinAuthResult.self, from: data)
+        } catch let failure as HTTPFailure {
+            throw JellyfinError(failure)
         }
         secrets.write(result.accessToken, for: .jellyfinAccessToken)
         secrets.write(result.user.id, for: .jellyfinUserId)

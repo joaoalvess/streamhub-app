@@ -6,6 +6,15 @@ nonisolated enum JellyfinError: Error {
     case badStatus(Int)
     case transport(any Error)
     case decoding(any Error)
+
+    init(_ failure: HTTPFailure) {
+        switch failure {
+        case .transport(let error): self = .transport(error)
+        case .status(401, _): self = .unauthorized
+        case .status(let code, _): self = .badStatus(code)
+        case .decoding(let error): self = .decoding(error)
+        }
+    }
 }
 
 nonisolated struct JellyfinAPI {
@@ -150,8 +159,7 @@ nonisolated struct JellyfinAPI {
             } catch {
                 throw JellyfinError.decoding(error)
             }
-            let (_, response) = try await send(request)
-            try Self.validate(response)
+            _ = try await send(request)
         }
     }
 
@@ -192,30 +200,19 @@ nonisolated struct JellyfinAPI {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue(context.authorizationHeader, forHTTPHeaderField: "Authorization")
-        let (data, response) = try await send(request)
-        try Self.validate(response)
+        let data = try await send(request)
         do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw JellyfinError.decoding(error)
+            return try HTTP.decode(T.self, from: data)
+        } catch let failure as HTTPFailure {
+            throw JellyfinError(failure)
         }
     }
 
-    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    private func send(_ request: URLRequest) async throws -> Data {
         do {
-            return try await session.data(for: request)
-        } catch {
-            throw JellyfinError.transport(error)
-        }
-    }
-
-    nonisolated private static func validate(_ response: URLResponse) throws {
-        guard let http = response as? HTTPURLResponse else { return }
-        if http.statusCode == 401 {
-            throw JellyfinError.unauthorized
-        }
-        guard (200...299).contains(http.statusCode) else {
-            throw JellyfinError.badStatus(http.statusCode)
+            return try await HTTP.data(for: request, session: session).0
+        } catch let failure as HTTPFailure {
+            throw JellyfinError(failure)
         }
     }
 
@@ -224,7 +221,7 @@ nonisolated struct JellyfinAPI {
         do {
             return try await operation(context)
         } catch JellyfinError.unauthorized {
-            await auth.invalidate()
+            await auth.invalidate(ifToken: context.token)
             let fresh = try await auth.context()
             return try await operation(fresh)
         }
