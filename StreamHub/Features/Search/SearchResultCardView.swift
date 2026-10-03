@@ -10,7 +10,6 @@ struct SearchResultCardView: View {
                 PosterCard(item: item)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel(accessibilityText)
 
             caption
         }
@@ -31,9 +30,5 @@ struct SearchResultCardView: View {
             }
         }
         .padding(.leading, 4)
-    }
-
-    private var accessibilityText: String {
-        item.year > 0 ? "\(item.title), \(item.year)" : item.title
     }
 }
