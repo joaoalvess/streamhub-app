@@ -91,7 +91,7 @@ private struct LibraryCardLabel: View {
 
     private var badges: some View {
         HStack(spacing: 6) {
-            if let label = entry.resolutionLabel {
+            ForEach(entry.quality.compactBadges, id: \.self) { label in
                 badge(label)
             }
             if let label = entry.audioLabel {
