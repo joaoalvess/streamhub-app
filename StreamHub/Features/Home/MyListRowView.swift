@@ -4,6 +4,7 @@ struct MyListRowView: View {
     let entries: [MyListEntry]
     var onRemove: (String) -> Void = { _ in }
     @Environment(DetailRouter.self) private var router: DetailRouter?
+    @Environment(ToastCenter.self) private var toasts: ToastCenter?
 
     private struct IndexedItem: Identifiable {
         let id: String
@@ -29,6 +30,7 @@ struct MyListRowView: View {
                         }
                         .contextMenu {
                             Button("Remover da Minha lista", role: .destructive) {
+                                toasts?.show("Removido da Minha lista", systemImage: "xmark")
                                 onRemove(entry.id)
                             }
                         }
