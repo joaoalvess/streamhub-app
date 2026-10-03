@@ -309,7 +309,7 @@ struct MediaWindowView: View {
     }
 
     private func resumeEntry(for item: MediaItem) -> ResumeEntry? {
-        coordinator?.progressStore.entries.first { $0.contentId == seriesId(for: item) }
+        coordinator?.progressStore.entry(forSeries: seriesId(for: item))
     }
 
     private func episodeFromEntry(for item: MediaItem) -> EpisodeItem? {

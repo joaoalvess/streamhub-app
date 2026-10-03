@@ -24,8 +24,6 @@ nonisolated struct SeasonGroup: Identifiable, Hashable, Sendable {
 }
 
 nonisolated struct EpisodeTimeline: Sendable {
-    private static let completionThreshold = 0.92
-
     let seasons: [SeasonGroup]
     private let order: [EpisodeItem]
     private let orderPositions: [String: Int]
@@ -49,7 +47,7 @@ nonisolated struct EpisodeTimeline: Sendable {
         guard !order.isEmpty else { return nil }
         if let resume, let videoId = resume.videoId {
             if let position = orderPositions[videoId],
-               (resume.progress ?? 0) < Self.completionThreshold {
+               (resume.progress ?? 0) < ResumePolicy.completionRatio {
                 return order[position]
             }
             let known = seasonPositions.values.contains { $0[videoId] != nil }

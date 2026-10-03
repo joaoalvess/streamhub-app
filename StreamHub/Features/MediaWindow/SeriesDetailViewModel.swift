@@ -72,7 +72,7 @@ final class SeriesDetailViewModel {
     }
 
     func seriesProgress(store: PlaybackProgressStore?, seriesId: String) -> SeriesProgress {
-        let resume = store?.entries.first { $0.contentId == seriesId }
+        let resume = store?.entry(forSeries: seriesId)
         let watched = store?.watchedVideoIds(seriesId: seriesId) ?? []
         if let cached = progressCache,
            cached.seriesId == seriesId,

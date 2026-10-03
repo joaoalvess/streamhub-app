@@ -133,7 +133,6 @@ final class PlaybackProgressStore {
     private static let maxSessions = 5
     private static let maxWatchedSeries = 40
     private static let sessionTTL: TimeInterval = 86_400
-    private nonisolated static let completionThreshold = 0.92
 
     private(set) var entries: [ResumeEntry] = []
     private(set) var activeProfileID: UUID?
@@ -162,11 +161,15 @@ final class PlaybackProgressStore {
         } else {
             return false
         }
-        return Double(position) / Double(total) >= completionThreshold
+        return Double(position) / Double(total) >= ResumePolicy.completionRatio
     }
 
     func position(for contentId: String) -> Int? {
-        entries.first { $0.contentId == contentId }?.positionSeconds
+        entry(forSeries: contentId)?.positionSeconds
+    }
+
+    func entry(forSeries seriesId: String) -> ResumeEntry? {
+        entries.first { $0.contentId == seriesId }
     }
 
     func upsert(_ entry: ResumeEntry) {

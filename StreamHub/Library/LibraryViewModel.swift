@@ -67,12 +67,7 @@ nonisolated struct LibraryEntry: Identifiable, Hashable, Sendable {
     }
 
     var startSeconds: Int? {
-        guard let resumePositionSeconds, resumePositionSeconds >= 30 else { return nil }
-        if let runtimeMinutes, runtimeMinutes > 0,
-           Double(resumePositionSeconds) > Double(runtimeMinutes * 60) * 0.95 {
-            return nil
-        }
-        return resumePositionSeconds
+        ResumePolicy.startSeconds(position: resumePositionSeconds, runtimeMinutes: runtimeMinutes)
     }
 
     func sessionMetadata() -> NativeSessionMetadata {

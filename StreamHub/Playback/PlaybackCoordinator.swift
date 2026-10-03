@@ -519,23 +519,12 @@ final class PlaybackCoordinator {
     }
 
     private func resumePosition(for contentId: String, runtimeMinutes: Int?) -> Int? {
-        guard let position = progressStore.position(for: contentId), position >= 30 else { return nil }
-        if let runtimeMinutes, runtimeMinutes > 0,
-           Double(position) > Double(runtimeMinutes * 60) * 0.95 {
-            return nil
-        }
-        return position
+        ResumePolicy.startSeconds(position: progressStore.position(for: contentId), runtimeMinutes: runtimeMinutes)
     }
 
     private func resumePosition(seriesId: String, videoId: String, runtimeMinutes: Int?) -> Int? {
-        guard let entry = progressStore.entries.first(where: { $0.contentId == seriesId }),
-              entry.videoId == videoId,
-              entry.positionSeconds >= 30 else { return nil }
-        if let runtimeMinutes, runtimeMinutes > 0,
-           Double(entry.positionSeconds) > Double(runtimeMinutes * 60) * 0.95 {
-            return nil
-        }
-        return entry.positionSeconds
+        guard let entry = progressStore.entry(forSeries: seriesId), entry.videoId == videoId else { return nil }
+        return ResumePolicy.startSeconds(position: entry.positionSeconds, runtimeMinutes: runtimeMinutes)
     }
 
     private static func streamQuery(
